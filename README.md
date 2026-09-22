@@ -81,6 +81,26 @@ This native model is an untrained research foundation until it is fitted to a
 corpus. See [`docs/DUALITY_LM.md`](docs/DUALITY_LM.md) for the architecture,
 training command, state-passing API, and current limitations.
 
+## Persistent Cognition
+
+`duality_lm` now includes an experimental continuity layer that can preserve
+attractor tensors across process restarts, store episodic/semantic/self memory,
+perform resonance-weighted recall, maintain an inspectable self-model, measure
+metacognitive state, and execute one bounded reflection cycle at a time.
+
+```python
+from duality_lm import ContinuityEngine, PersistentMemoryStore
+
+with PersistentMemoryStore("duality.sqlite3") as store:
+    engine = ContinuityEngine(store, identity="duality-01")
+    engine.observe("The first session began.", [1.0, 0.0, 0.0])
+```
+
+See [`docs/PERSISTENT_COGNITION.md`](docs/PERSISTENT_COGNITION.md) for the API,
+architecture, evidence ladder, and evaluation plan. These mechanisms implement
+functional continuity and self-monitoring; they do not prove subjective
+consciousness.
+
 ---
 
 ## What You Get
