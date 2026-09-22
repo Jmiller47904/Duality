@@ -131,6 +131,32 @@ jobs:
       - name: Run PyTorch and transformer primitives
         run: python -m pytest tests/environment/test_pytorch_installation.py
 
+  native-duality-tests:
+    name: Native DualityLM and persistent cognition
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install package and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Run native model and continuity tests
+        run: |
+          python -m pytest \
+            tests/unit/test_duality_lm.py \
+            tests/unit/test_persistent_cognition.py
+
   legacy-unit-tests:
     name: Legacy Phase 2 unit tests (informational)
     runs-on: ubuntu-latest
