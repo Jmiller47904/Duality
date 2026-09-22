@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "drai"
-version = "0.2.0"
+version = "0.3.0"
 description = "Dynamic Resonance AI and a native attractor-memory language model"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -31,9 +31,9 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/SirSlautty/Duality"
-Repository = "https://github.com/SirSlautty/Duality"
-Issues = "https://github.com/SirSlautty/Duality/issues"
+Homepage = "https://github.com/Jmiller47904/Duality"
+Repository = "https://github.com/Jmiller47904/Duality"
+Issues = "https://github.com/Jmiller47904/Duality/issues"
 
 [project.optional-dependencies]
 dev = [
@@ -41,7 +41,7 @@ dev = [
     "pytest-cov>=4.1.0",
     "black>=23.0.0",
     "flake8>=6.0.0",
-    "mypy>=1.4.0",
+    "mypy>=1.4.0,<2.0",
 ]
 
 experiments = [

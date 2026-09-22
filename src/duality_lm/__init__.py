@@ -6,16 +6,32 @@ whose attention blocks can read and update a bounded attractor memory state.
 """
 
 from .config import DualityLMConfig
+from .cognition import (
+    ContinuityEngine,
+    MetaState,
+    ReflectionContext,
+    ReflectionResult,
+    measure_metastate,
+)
 from .memory import DualityMemory, MemoryState
 from .model import DualityLM, DualityLMOutput
+from .persistence import MemoryKind, MemoryRecord, PersistentMemoryStore, SelfModel
 from .tokenizer import ByteTokenizer
 
 __all__ = [
     "ByteTokenizer",
+    "ContinuityEngine",
     "DualityLM",
     "DualityLMConfig",
     "DualityLMOutput",
     "DualityMemory",
     "MemoryState",
+    "MemoryKind",
+    "MemoryRecord",
+    "MetaState",
+    "PersistentMemoryStore",
+    "ReflectionContext",
+    "ReflectionResult",
+    "SelfModel",
+    "measure_metastate",
 ]
-
