@@ -133,3 +133,46 @@ def test_reflection_cycle_updates_self_memory(tmp_path: Path) -> None:
         assert "what changed since the last cycle?" not in updated.unresolved_questions
         assert "what evidence would falsify this conclusion?" in updated.unresolved_questions
         assert self_memories[0].content == result.content
+
+
+def test_named_snapshot_replays_memory_and_preserves_checkpoint(tmp_path):
+    from duality_lm import DualityMemory
+    torch.manual_seed(17)
+    memory = DualityMemory(8, slots=4).eval()
+    _, before = memory(torch.randn(1, 3, 8))
+    continuation = torch.randn(1, 2, 8)
+    expected, _ = memory(continuation, before)
+    path = tmp_path / "snapshots.sqlite3"
+    with PersistentMemoryStore(path) as store:
+        digest = store.save_snapshot("a", "before", (None, before), {"seed": "17"})
+        store.save_model_state("a", (None, None))
+        assert store.list_snapshots("a")[0]["sha256"] == digest
+        assert store.list_snapshots("a")[0]["provenance"] == {"seed": "17"}
+    with PersistentMemoryStore(path) as store:
+        restored = store.load_snapshot("a", "before")
+        actual, _ = memory(continuation, restored[1])
+        assert torch.equal(expected, actual)
+        assert store.load_model_state("a") == (None, None)
+        restored[1].strengths.zero_()
+        assert torch.equal(store.load_snapshot("a", "before")[1].strengths, before.strengths)
+        assert store.list_snapshots("other") == []
+        with pytest.raises(KeyError):
+            store.load_snapshot("other", "before")
+
+
+def test_snapshot_is_immutable_and_detects_corruption(tmp_path):
+    import sqlite3
+    with PersistentMemoryStore(tmp_path / "snapshots.sqlite3") as store:
+        digest = store.save_snapshot("a", "v1", (None,))
+        assert store.save_snapshot("b", "v1", (None,)) == digest
+        with pytest.raises(sqlite3.IntegrityError):
+            store.save_snapshot("a", "v1", ())
+        assert store.load_snapshot("a", "v1") == (None,)
+        store.connection.execute("UPDATE model_snapshot SET payload = '{}' WHERE identity = 'a'")
+        store.connection.commit()
+        with pytest.raises(ValueError, match="checksum"):
+            store.load_snapshot("a", "v1")
+        with pytest.raises(ValueError):
+            store.save_snapshot("a", "", ())
+        with pytest.raises(ValueError):
+            store.save_snapshot("a", "bad-metadata", (), {"seed": 1})

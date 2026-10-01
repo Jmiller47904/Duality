@@ -13,6 +13,7 @@ particular vector database.
 from __future__ import annotations
 
 import json
+import hashlib
 import math
 import sqlite3
 import time
@@ -122,6 +123,15 @@ class PersistentMemoryStore:
 
     def _migrate(self) -> None:
         self.connection.executescript("""
+            CREATE TABLE IF NOT EXISTS model_snapshot (
+                identity TEXT NOT NULL,
+                label TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                sha256 TEXT NOT NULL,
+                provenance TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                PRIMARY KEY (identity, label)
+            );
             CREATE TABLE IF NOT EXISTS model_state (
                 identity TEXT PRIMARY KEY,
                 payload TEXT NOT NULL,
@@ -280,24 +290,11 @@ class PersistentMemoryStore:
     def save_model_state(self, identity: str, state: ModelMemoryState) -> None:
         """Serialize all memory-enabled transformer layers transactionally."""
 
-        layers: List[Optional[Dict[str, Any]]] = []
-        for layer in state:
-            if layer is None:
-                layers.append(None)
-                continue
-            detached = layer.detach()
-            layers.append(
-                {
-                    "attractors": detached.attractors.cpu().tolist(),
-                    "strengths": detached.strengths.cpu().tolist(),
-                    "timestep": detached.timestep.cpu().tolist(),
-                    "dtype": str(detached.attractors.dtype).replace("torch.", ""),
-                }
-            )
+        payload = self._encode_state(state)
         timestamp = time.time()
         self.connection.execute(
             "INSERT OR REPLACE INTO model_state VALUES (?, ?, ?)",
-            (identity, json.dumps({"version": 1, "layers": layers}), timestamp),
+            (identity, payload, timestamp),
         )
         self.connection.commit()
 
@@ -313,7 +310,30 @@ class PersistentMemoryStore:
         ).fetchone()
         if row is None:
             return None
-        payload = json.loads(row["payload"])
+        return self._decode_state(row["payload"], device)
+
+    @staticmethod
+    def _encode_state(state: ModelMemoryState) -> str:
+        layers: List[Optional[Dict[str, Any]]] = []
+        for layer in state:
+            if layer is None:
+                layers.append(None)
+                continue
+            detached = layer.detach()
+            layers.append(
+                {
+                    "attractors": detached.attractors.cpu().tolist(),
+                    "strengths": detached.strengths.cpu().tolist(),
+                    "timestep": detached.timestep.cpu().tolist(),
+                    "dtype": str(detached.attractors.dtype).replace("torch.", ""),
+                }
+            )
+        return json.dumps({"version": 1, "layers": layers}, sort_keys=True,
+                          separators=(",", ":"), allow_nan=False)
+
+    @staticmethod
+    def _decode_state(serialized: str, device=None) -> ModelMemoryState:
+        payload = json.loads(serialized)
         if payload.get("version") != 1:
             raise ValueError("unsupported persistent model-state version")
 
@@ -333,6 +353,53 @@ class PersistentMemoryStore:
                 )
             )
         return tuple(layers)
+
+    def save_snapshot(self, identity: str, label: str, state: ModelMemoryState,
+                      provenance: Optional[Dict[str, str]] = None) -> str:
+        """Save a named, immutable attractor checkpoint; return its SHA-256.
+
+        Labels are unique within an identity. Capture weights/config/input and
+        RNG separately when replaying model output; this stores only memory.
+        """
+        if not identity.strip() or not label.strip():
+            raise ValueError("identity and label cannot be empty")
+        metadata = {} if provenance is None else dict(provenance)
+        if not all(isinstance(k, str) and isinstance(v, str) for k, v in metadata.items()):
+            raise ValueError("provenance must map strings to strings")
+        payload = self._encode_state(state)
+        digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        with self.connection:
+            self.connection.execute(
+                "INSERT INTO model_snapshot VALUES (?, ?, ?, ?, ?, ?)",
+                (identity, label, payload, digest,
+                 json.dumps(metadata, sort_keys=True), time.time()),
+            )
+        return digest
+
+    def list_snapshots(self, identity: str) -> List[Dict[str, Any]]:
+        """List checkpoint metadata without loading tensors or changing state."""
+        rows = self.connection.execute(
+            "SELECT label, sha256, provenance, created_at FROM model_snapshot "
+            "WHERE identity = ? ORDER BY created_at, label", (identity,)
+        ).fetchall()
+        return [{**dict(row), "provenance": json.loads(row["provenance"])} for row in rows]
+
+    def load_snapshot(self, identity: str, label: str, device=None) -> ModelMemoryState:
+        """Read an independent state after checking payload integrity.
+
+        The checksum detects corruption, not malicious modification of both
+        the database payload and checksum. The active checkpoint is untouched.
+        """
+        row = self.connection.execute(
+            "SELECT payload, sha256 FROM model_snapshot WHERE identity = ? AND label = ?",
+            (identity, label),
+        ).fetchone()
+        if row is None:
+            raise KeyError("snapshot not found for this identity and label")
+        actual = hashlib.sha256(row["payload"].encode("utf-8")).hexdigest()
+        if actual != row["sha256"]:
+            raise ValueError("snapshot checksum mismatch")
+        return self._decode_state(row["payload"], device)
 
     def save_self_model(self, model: SelfModel) -> None:
         model.updated_at = time.time()
