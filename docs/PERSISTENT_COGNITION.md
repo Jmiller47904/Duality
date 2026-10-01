@@ -150,3 +150,21 @@ agency, not settle subjective consciousness.
    actual task accuracy.
 7. **Shutdown and scope:** verify that cycles stop at configured bounds and
    cannot acquire undeclared permissions.
+
+
+## Named memory snapshots
+
+Use `store.save_snapshot(identity, label, state, provenance={"checkpoint": "weights-id"})`
+to retain a named attractor checkpoint without overwriting an earlier one. A duplicate
+identity/label raises `sqlite3.IntegrityError`. `list_snapshots(identity)` returns labels,
+creation times, SHA-256 payload checksums and user-supplied provenance.
+`load_snapshot(identity, label)` verifies the checksum and returns independent tensors;
+it does not replace the active checkpoint. Missing snapshots raise `KeyError`.
+
+Snapshots contain attractor state only, not weights, KV caches, RNG state, semantic
+records or the self-model. Exact continuation replay requires the same model weights,
+configuration, input, cache context and deterministic execution settings. The CPU test
+replays a fixed continuation through a memory layer after reopening the database.
+Checksums detect accidental payload corruption; they are not signatures. Keep snapshot
+databases trusted and local. Provenance is caller-supplied, not independently verified.
+This is an experiment reproducibility feature, not evidence of consciousness.
