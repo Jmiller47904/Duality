@@ -168,3 +168,9 @@ replays a fixed continuation through a memory layer after reopening the database
 Checksums detect accidental payload corruption; they are not signatures. Keep snapshot
 databases trusted and local. Provenance is caller-supplied, not independently verified.
 This is an experiment reproducibility feature, not evidence of consciousness.
+
+Restores also reject malformed JSON, unsupported or non-floating dtypes, non-finite
+values, ragged tensor shapes, inconsistent batch dimensions, excessive layer counts,
+oversized payloads, and states containing more than 16 million tensor values. These
+bounds reduce accidental or hostile resource exhaustion when a database is damaged or
+replaced. They do not make an untrusted SQLite database safe; use trusted local files.

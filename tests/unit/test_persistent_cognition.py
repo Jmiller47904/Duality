@@ -1,5 +1,6 @@
 """Tests for durable memory, self-modeling, and bounded reflection."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -137,6 +138,7 @@ def test_reflection_cycle_updates_self_memory(tmp_path: Path) -> None:
 
 def test_named_snapshot_replays_memory_and_preserves_checkpoint(tmp_path):
     from duality_lm import DualityMemory
+
     torch.manual_seed(17)
     memory = DualityMemory(8, slots=4).eval()
     _, before = memory(torch.randn(1, 3, 8))
@@ -162,6 +164,7 @@ def test_named_snapshot_replays_memory_and_preserves_checkpoint(tmp_path):
 
 def test_snapshot_is_immutable_and_detects_corruption(tmp_path):
     import sqlite3
+
     with PersistentMemoryStore(tmp_path / "snapshots.sqlite3") as store:
         digest = store.save_snapshot("a", "v1", (None,))
         assert store.save_snapshot("b", "v1", (None,)) == digest
@@ -176,3 +179,65 @@ def test_snapshot_is_immutable_and_detects_corruption(tmp_path):
             store.save_snapshot("a", "", ())
         with pytest.raises(ValueError):
             store.save_snapshot("a", "bad-metadata", (), {"seed": 1})
+
+
+@pytest.mark.parametrize(
+    "payload, message",
+    [
+        ({"version": 1, "layers": {}}, "layers must be a list"),
+        (
+            {
+                "version": 1,
+                "layers": [
+                    {
+                        "dtype": "int64",
+                        "attractors": [[[1.0]]],
+                        "strengths": [[1.0]],
+                        "timestep": [1.0],
+                    }
+                ],
+            },
+            "unsupported tensor dtype",
+        ),
+        (
+            {
+                "version": 1,
+                "layers": [
+                    {
+                        "dtype": "float32",
+                        "attractors": [[[1.0]], [[2.0]]],
+                        "strengths": [[1.0]],
+                        "timestep": [1.0, 2.0],
+                    }
+                ],
+            },
+            "batch dimensions do not match",
+        ),
+        (
+            {
+                "version": 1,
+                "layers": [
+                    {
+                        "dtype": "float32",
+                        "attractors": [[[1.0], [2.0, 3.0]]],
+                        "strengths": [[1.0, 1.0]],
+                        "timestep": [1.0],
+                    }
+                ],
+            },
+            "invalid attractor vectors",
+        ),
+    ],
+)
+def test_persistent_state_rejects_invalid_tensor_metadata(payload, message):
+    with pytest.raises(ValueError, match=message):
+        PersistentMemoryStore._decode_state(json.dumps(payload))
+
+
+def test_persistent_state_rejects_nonfinite_json_constants():
+    serialized = (
+        '{"version":1,"layers":[{"dtype":"float32",'
+        '"attractors":[[[NaN]]],"strengths":[[1]],"timestep":[1]}]}'
+    )
+    with pytest.raises(ValueError, match="invalid numeric constant"):
+        PersistentMemoryStore._decode_state(serialized)

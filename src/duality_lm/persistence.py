@@ -12,8 +12,8 @@ particular vector database.
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import math
 import sqlite3
 import time
@@ -29,6 +29,10 @@ from .memory import MemoryState
 
 LayerState = Optional[MemoryState]
 ModelMemoryState = Tuple[LayerState, ...]
+MAX_MODEL_STATE_BYTES = 128 * 1024 * 1024
+MAX_MODEL_STATE_LAYERS = 1024
+MAX_MODEL_STATE_VALUES = 16_000_000
+SUPPORTED_STATE_DTYPES = frozenset({"float16", "float32", "float64", "bfloat16"})
 
 
 class MemoryKind(str, Enum):
@@ -328,34 +332,116 @@ class PersistentMemoryStore:
                     "dtype": str(detached.attractors.dtype).replace("torch.", ""),
                 }
             )
-        return json.dumps({"version": 1, "layers": layers}, sort_keys=True,
-                          separators=(",", ":"), allow_nan=False)
+        return json.dumps(
+            {"version": 1, "layers": layers}, sort_keys=True, separators=(",", ":"), allow_nan=False
+        )
 
     @staticmethod
     def _decode_state(serialized: str, device=None) -> ModelMemoryState:
-        payload = json.loads(serialized)
+        if not isinstance(serialized, str):
+            raise ValueError("persistent model state must be JSON text")
+        if len(serialized.encode("utf-8")) > MAX_MODEL_STATE_BYTES:
+            raise ValueError("persistent model state exceeds the size limit")
+
+        def reject_constant(value: str) -> None:
+            raise ValueError(f"invalid numeric constant {value}")
+
+        try:
+            payload = json.loads(serialized, parse_constant=reject_constant)
+        except (json.JSONDecodeError, RecursionError, TypeError) as error:
+            raise ValueError("persistent model state is not valid JSON") from error
+        if not isinstance(payload, dict):
+            raise ValueError("persistent model state must be a JSON object")
         if payload.get("version") != 1:
             raise ValueError("unsupported persistent model-state version")
+        encoded_layers = payload.get("layers")
+        if not isinstance(encoded_layers, list):
+            raise ValueError("persistent model-state layers must be a list")
+        if len(encoded_layers) > MAX_MODEL_STATE_LAYERS:
+            raise ValueError("persistent model state contains too many layers")
 
         layers: List[LayerState] = []
-        for layer in payload["layers"]:
+        total_values = 0
+        for layer_index, layer in enumerate(encoded_layers):
             if layer is None:
                 layers.append(None)
                 continue
-            dtype = getattr(torch, layer["dtype"], None)
-            if not isinstance(dtype, torch.dtype):
-                raise ValueError(f"unsupported tensor dtype {layer['dtype']}")
+            if not isinstance(layer, dict):
+                raise ValueError(f"memory layer {layer_index} must be an object or null")
+            dtype_name = layer.get("dtype")
+            if dtype_name not in SUPPORTED_STATE_DTYPES:
+                raise ValueError(f"unsupported tensor dtype {dtype_name}")
+            dtype = getattr(torch, dtype_name)
+
+            attractors = layer.get("attractors")
+            strengths = layer.get("strengths")
+            timestep = layer.get("timestep")
+            if not isinstance(attractors, list) or not attractors:
+                raise ValueError(
+                    f"memory layer {layer_index} attractors must have a batch dimension"
+                )
+            if not isinstance(strengths, list) or not isinstance(timestep, list):
+                raise ValueError(f"memory layer {layer_index} has invalid tensor containers")
+
+            batch_size = len(attractors)
+            if len(strengths) != batch_size or len(timestep) != batch_size:
+                raise ValueError(f"memory layer {layer_index} batch dimensions do not match")
+            if not isinstance(attractors[0], list) or not attractors[0]:
+                raise ValueError(f"memory layer {layer_index} attractors must contain slots")
+            slot_count = len(attractors[0])
+            first_vector = attractors[0][0]
+            if not isinstance(first_vector, list) or not first_vector:
+                raise ValueError(f"memory layer {layer_index} attractors must contain vectors")
+            hidden_size = len(first_vector)
+
+            def finite_number(value: Any) -> bool:
+                return (
+                    isinstance(value, (int, float))
+                    and not isinstance(value, bool)
+                    and math.isfinite(float(value))
+                )
+
+            for batch in attractors:
+                if not isinstance(batch, list) or len(batch) != slot_count:
+                    raise ValueError(f"memory layer {layer_index} has ragged attractor slots")
+                for vector in batch:
+                    if (
+                        not isinstance(vector, list)
+                        or len(vector) != hidden_size
+                        or not all(finite_number(value) for value in vector)
+                    ):
+                        raise ValueError(
+                            f"memory layer {layer_index} has invalid attractor vectors"
+                        )
+            for batch in strengths:
+                if (
+                    not isinstance(batch, list)
+                    or len(batch) != slot_count
+                    or not all(finite_number(value) for value in batch)
+                ):
+                    raise ValueError(f"memory layer {layer_index} has invalid strengths")
+            if not all(finite_number(value) for value in timestep):
+                raise ValueError(f"memory layer {layer_index} has an invalid timestep")
+
+            total_values += batch_size * (slot_count * hidden_size + slot_count + 1)
+            if total_values > MAX_MODEL_STATE_VALUES:
+                raise ValueError("persistent model state contains too many tensor values")
             layers.append(
                 MemoryState(
-                    attractors=torch.tensor(layer["attractors"], dtype=dtype, device=device),
-                    strengths=torch.tensor(layer["strengths"], dtype=dtype, device=device),
-                    timestep=torch.tensor(layer["timestep"], dtype=dtype, device=device),
+                    attractors=torch.tensor(attractors, dtype=dtype, device=device),
+                    strengths=torch.tensor(strengths, dtype=dtype, device=device),
+                    timestep=torch.tensor(timestep, dtype=dtype, device=device),
                 )
             )
         return tuple(layers)
 
-    def save_snapshot(self, identity: str, label: str, state: ModelMemoryState,
-                      provenance: Optional[Dict[str, str]] = None) -> str:
+    def save_snapshot(
+        self,
+        identity: str,
+        label: str,
+        state: ModelMemoryState,
+        provenance: Optional[Dict[str, str]] = None,
+    ) -> str:
         """Save a named, immutable attractor checkpoint; return its SHA-256.
 
         Labels are unique within an identity. Capture weights/config/input and
@@ -371,8 +457,14 @@ class PersistentMemoryStore:
         with self.connection:
             self.connection.execute(
                 "INSERT INTO model_snapshot VALUES (?, ?, ?, ?, ?, ?)",
-                (identity, label, payload, digest,
-                 json.dumps(metadata, sort_keys=True), time.time()),
+                (
+                    identity,
+                    label,
+                    payload,
+                    digest,
+                    json.dumps(metadata, sort_keys=True),
+                    time.time(),
+                ),
             )
         return digest
 
@@ -380,7 +472,8 @@ class PersistentMemoryStore:
         """List checkpoint metadata without loading tensors or changing state."""
         rows = self.connection.execute(
             "SELECT label, sha256, provenance, created_at FROM model_snapshot "
-            "WHERE identity = ? ORDER BY created_at, label", (identity,)
+            "WHERE identity = ? ORDER BY created_at, label",
+            (identity,),
         ).fetchall()
         return [{**dict(row), "provenance": json.loads(row["provenance"])} for row in rows]
 
