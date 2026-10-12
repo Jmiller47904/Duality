@@ -64,6 +64,10 @@ limitations, unresolved questions, cycle count, and the last reflection. It is
 explicit so an evaluator can inspect changes and detect contradictions or
 identity drift.
 
+Memory record IDs are identity-bound. Reusing an existing record ID for a
+different identity is rejected transactionally, so a caller cannot silently move
+or overwrite another identity's stored memory.
+
 ### Metacognition
 
 `measure_metastate()` derives normalized values from the current attractor
