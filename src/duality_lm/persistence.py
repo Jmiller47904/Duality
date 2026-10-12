@@ -182,28 +182,33 @@ class PersistentMemoryStore:
         if record.decay_rate < 0.0:
             raise ValueError("decay_rate must be >= 0")
 
-        self.connection.execute(
-            """
-            INSERT OR REPLACE INTO memory VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                record.id,
-                identity,
-                record.kind.value,
-                record.content,
-                json.dumps(record.vector),
-                json.dumps(record.resonance_vector),
-                record.importance,
-                record.novelty,
-                record.salience,
-                json.dumps(record.associations),
-                record.activation_count,
-                record.created_at,
-                record.last_activated,
-                record.decay_rate,
-            ),
-        )
-        self.connection.commit()
+        with self.connection:
+            owner = self.connection.execute(
+                "SELECT identity FROM memory WHERE id = ?", (record.id,)
+            ).fetchone()
+            if owner is not None and owner["identity"] != identity:
+                raise ValueError("memory id already belongs to another identity")
+            self.connection.execute(
+                """
+                INSERT OR REPLACE INTO memory VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    record.id,
+                    identity,
+                    record.kind.value,
+                    record.content,
+                    json.dumps(record.vector),
+                    json.dumps(record.resonance_vector),
+                    record.importance,
+                    record.novelty,
+                    record.salience,
+                    json.dumps(record.associations),
+                    record.activation_count,
+                    record.created_at,
+                    record.last_activated,
+                    record.decay_rate,
+                ),
+            )
         return record.id
 
     def recall(

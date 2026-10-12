@@ -86,6 +86,32 @@ def test_recall_rejects_vector_dimension_mismatch(tmp_path: Path) -> None:
             store.recall("duality-test", [1.0, 0.0])
 
 
+def test_memory_id_cannot_move_between_identities(tmp_path: Path) -> None:
+    memory_id = "shared-record-id"
+    original = MemoryRecord(
+        id=memory_id,
+        content="identity a memory",
+        vector=[1.0, 0.0],
+        resonance_vector=[1.0, 0.0],
+    )
+    replacement = MemoryRecord(
+        id=memory_id,
+        content="identity b replacement",
+        vector=[1.0, 0.0],
+        resonance_vector=[1.0, 0.0],
+    )
+
+    with PersistentMemoryStore(tmp_path / "memory.sqlite3") as store:
+        store.remember("identity-a", original)
+        with pytest.raises(ValueError, match="belongs to another identity"):
+            store.remember("identity-b", replacement)
+
+        recalled_a = store.recall("identity-a", [1.0, 0.0])
+        recalled_b = store.recall("identity-b", [1.0, 0.0])
+        assert [record.content for record in recalled_a] == ["identity a memory"]
+        assert recalled_b == []
+
+
 def test_metastate_is_normalized() -> None:
     model = tiny_model()
     state = model(torch.tensor([[1, 8, 9, 10]], dtype=torch.long)).memory_state
