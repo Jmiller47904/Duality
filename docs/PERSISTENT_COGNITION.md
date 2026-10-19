@@ -68,6 +68,13 @@ Memory record IDs are identity-bound. Reusing an existing record ID for a
 different identity is rejected transactionally, so a caller cannot silently move
 or overwrite another identity's stored memory.
 
+`reset_identity(identity)` removes that identity's long-term memories, active model
+state, and self-model in one SQLite transaction, returning a row count for each
+store. It leaves named snapshots intact by default so experiment evidence is not
+silently destroyed. Pass `include_snapshots=True` only when those checkpoints must
+also be deleted. Other identities are never affected. This is a reset of stored
+functional state, not a claim about identity or consciousness.
+
 ### Metacognition
 
 `measure_metastate()` derives normalized values from the current attractor
