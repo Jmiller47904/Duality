@@ -207,6 +207,55 @@ def test_snapshot_is_immutable_and_detects_corruption(tmp_path):
             store.save_snapshot("a", "bad-metadata", (), {"seed": 1})
 
 
+def test_identity_reset_is_scoped_and_preserves_snapshots_by_default(tmp_path):
+    with PersistentMemoryStore(tmp_path / "reset.sqlite3") as store:
+        for identity in ("a", "b"):
+            store.remember(
+                identity,
+                MemoryRecord(
+                    content=f"memory for {identity}",
+                    vector=[1.0, 0.0],
+                    resonance_vector=[1.0, 0.0],
+                ),
+            )
+            store.save_model_state(identity, (None,))
+            store.save_self_model(SelfModel(identity=identity, goals=["persist"]))
+            store.save_snapshot(identity, "baseline", (None,), {"identity": identity})
+
+        deleted = store.reset_identity("a")
+
+        assert deleted == {
+            "memory": 1,
+            "model_state": 1,
+            "self_model": 1,
+            "model_snapshot": 0,
+        }
+        assert store.recall("a", [1.0, 0.0]) == []
+        assert store.load_model_state("a") is None
+        reset_self_model = store.load_self_model("a")
+        assert reset_self_model.identity == "a"
+        assert reset_self_model.goals == []
+        assert reset_self_model.cycle_count == 0
+        assert [snapshot["label"] for snapshot in store.list_snapshots("a")] == ["baseline"]
+
+        assert [record.content for record in store.recall("b", [1.0, 0.0])] == ["memory for b"]
+        assert store.load_model_state("b") == (None,)
+        assert store.load_self_model("b").goals == ["persist"]
+        assert [snapshot["label"] for snapshot in store.list_snapshots("b")] == ["baseline"]
+
+        snapshot_deleted = store.reset_identity("a", include_snapshots=True)
+        assert snapshot_deleted == {
+            "memory": 0,
+            "model_state": 0,
+            "self_model": 0,
+            "model_snapshot": 1,
+        }
+        assert store.list_snapshots("a") == []
+
+        with pytest.raises(ValueError, match="identity cannot be empty"):
+            store.reset_identity("  ")
+
+
 @pytest.mark.parametrize(
     "payload, message",
     [

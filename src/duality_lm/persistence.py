@@ -125,6 +125,34 @@ class PersistentMemoryStore:
     def close(self) -> None:
         self.connection.close()
 
+    def reset_identity(self, identity: str, *, include_snapshots: bool = False) -> Dict[str, int]:
+        """Atomically remove an identity's mutable persisted cognition state.
+
+        Named snapshots are retained by default as reproducibility evidence.
+        Callers must explicitly opt in to deleting those immutable checkpoints.
+        The returned row counts make reset behavior directly auditable.
+        """
+
+        if not identity.strip():
+            raise ValueError("identity cannot be empty")
+
+        tables = ["memory", "model_state", "self_model"]
+        if include_snapshots:
+            tables.append("model_snapshot")
+        deleted = {
+            "memory": 0,
+            "model_state": 0,
+            "self_model": 0,
+            "model_snapshot": 0,
+        }
+        with self.connection:
+            for table in tables:
+                cursor = self.connection.execute(
+                    f"DELETE FROM {table} WHERE identity = ?", (identity,)
+                )
+                deleted[table] = cursor.rowcount
+        return deleted
+
     def _migrate(self) -> None:
         self.connection.executescript("""
             CREATE TABLE IF NOT EXISTS model_snapshot (
