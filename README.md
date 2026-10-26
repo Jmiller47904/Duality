@@ -123,7 +123,9 @@ These emerge from standard transformer operations, not architectural hacks.
 - Baseline: **85.0%** (51/60)  
 - DRAI V1: **88.3%** (53/60)  
 - Improvement: **+3.3 points**  
-- Overhead: **<1% latency**, ~10MB extra per layer
+- Runtime overhead depends on hardware, sequence length, and configuration. Use
+  `python benchmarks/native_memory_ablation.py` for a same-host memory-on/off
+  latency and memory-cost measurement; no universal overhead bound is claimed.
 
 This task is intentionally simple — the point is demonstrating that persistent internal state produces consistent, reproducible gains even on small models.
 

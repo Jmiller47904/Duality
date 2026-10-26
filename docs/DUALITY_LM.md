@@ -106,6 +106,24 @@ number of tokens processed by each memory-enabled block. These values are
 observability signals, not a claim that the model has human-like memory or
 reasoning.
 
+### CPU memory ablation
+
+Run a deterministic tiny-model comparison without downloading a checkpoint:
+
+```bash
+python benchmarks/native_memory_ablation.py --iterations 7
+```
+
+The JSON report compares median memory-on/off forward latency, parameter bytes,
+retained state bytes, active slots, and the mean absolute logit change between a
+continued state and a reset state. Both models share the same non-memory weights.
+Latency varies by host; compare runs only on the same machine. An optional
+`--max-latency-ratio` turns a locally established ratio into a regression gate.
+
+This benchmark uses an untrained tiny model. A nonzero continuation delta shows
+that retained state changed computation; it does not show better recall,
+accuracy, reasoning, identity, or consciousness.
+
 ## Scope of this milestone
 
 This is a trainable research foundation, not a competitive pretrained LLM.
