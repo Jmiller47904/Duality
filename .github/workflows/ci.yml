@@ -155,7 +155,8 @@ jobs:
         run: |
           python -m pytest \
             tests/unit/test_duality_lm.py \
-            tests/unit/test_persistent_cognition.py
+            tests/unit/test_persistent_cognition.py \
+            tests/unit/test_native_memory_ablation.py
 
   legacy-unit-tests:
     name: Legacy Phase 2 unit tests (informational)
