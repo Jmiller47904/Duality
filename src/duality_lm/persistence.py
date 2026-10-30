@@ -207,8 +207,8 @@ class PersistentMemoryStore:
         record.importance = _validate_unit_interval("importance", record.importance)
         record.novelty = _validate_unit_interval("novelty", record.novelty)
         record.salience = _validate_unit_interval("salience", record.salience)
-        if record.decay_rate < 0.0:
-            raise ValueError("decay_rate must be >= 0")
+        if not math.isfinite(record.decay_rate) or record.decay_rate < 0.0:
+            raise ValueError("decay_rate must be finite and >= 0")
 
         with self.connection:
             owner = self.connection.execute(
