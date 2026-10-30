@@ -98,12 +98,20 @@ def _validate_vector(vector: Sequence[float], name: str = "vector") -> List[floa
 def _cosine(left: Sequence[float], right: Sequence[float]) -> float:
     if len(left) != len(right):
         raise ValueError("memory and query vectors must have the same dimension")
-    dot = sum(a * b for a, b in zip(left, right))
-    left_norm = math.sqrt(sum(value * value for value in left))
-    right_norm = math.sqrt(sum(value * value for value in right))
-    if left_norm == 0.0 or right_norm == 0.0:
+    left_scale = max(abs(value) for value in left)
+    right_scale = max(abs(value) for value in right)
+    if left_scale == 0.0 or right_scale == 0.0:
         return 0.0
-    return dot / (left_norm * right_norm)
+
+    # Scale before multiplication so finite vectors near the float limit do
+    # not overflow while computing their dot product or norms.
+    scaled_left = [value / left_scale for value in left]
+    scaled_right = [value / right_scale for value in right]
+    dot = sum(a * b for a, b in zip(scaled_left, scaled_right))
+    left_norm = math.sqrt(sum(value * value for value in scaled_left))
+    right_norm = math.sqrt(sum(value * value for value in scaled_right))
+    cosine = dot / (left_norm * right_norm)
+    return max(-1.0, min(1.0, cosine))
 
 
 class PersistentMemoryStore:
