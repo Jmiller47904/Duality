@@ -86,6 +86,27 @@ def test_recall_rejects_vector_dimension_mismatch(tmp_path: Path) -> None:
             store.recall("duality-test", [1.0, 0.0])
 
 
+@pytest.mark.parametrize(
+    "decay_rate",
+    [float("nan"), float("inf"), float("-inf"), -0.01],
+)
+def test_remember_rejects_nonfinite_or_negative_decay_rate(
+    tmp_path: Path, decay_rate: float
+) -> None:
+    with PersistentMemoryStore(tmp_path / "memory.sqlite3") as store:
+        record = MemoryRecord(
+            content="invalid decay rate",
+            vector=[1.0, 0.0],
+            resonance_vector=[1.0, 0.0],
+            decay_rate=decay_rate,
+        )
+
+        with pytest.raises(ValueError, match="decay_rate must be finite and >= 0"):
+            store.remember("duality-test", record)
+
+        assert store.recall("duality-test", [1.0, 0.0]) == []
+
+
 def test_memory_id_cannot_move_between_identities(tmp_path: Path) -> None:
     memory_id = "shared-record-id"
     original = MemoryRecord(
