@@ -54,6 +54,10 @@ sqrt(cosine similarity)
 * temporal decay
 ```
 
+Memory inputs are validated before storage. In particular, `decay_rate` must be
+finite and non-negative so temporal decay cannot introduce non-finite recall
+scores.
+
 This is deliberately not hidden behind a database-specific nearest-neighbor
 implementation. Each factor can be measured or removed in an ablation.
 
