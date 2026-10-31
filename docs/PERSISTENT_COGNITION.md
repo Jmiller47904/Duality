@@ -96,7 +96,13 @@ These values describe computation. They are not feelings.
 2. recall memories resonant with the supplied state vector;
 3. expose the self-model, memories, and metacognitive state to a reasoner;
 4. persist the resulting self-memory;
-5. update questions, cycle count, and the attractor checkpoint.
+5. update questions, cycle count, and the optional attractor checkpoint.
+
+After the reasoner returns, the reflection self-memory, revised self-model, and
+optional checkpoint are validated and written in one SQLite transaction. A
+database write failure rolls back those output rows together. Recall activation
+counts are updated when memories are selected, before the reasoner runs; they
+remain a separate record of the recall attempt.
 
 An external scheduler may call this method periodically. The library does not
 start a hidden infinite loop, spend compute without a bound, or grant itself
