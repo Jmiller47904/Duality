@@ -239,6 +239,73 @@ class PersistentMemoryStore:
             )
         return record.id
 
+    def save_reflection_cycle(
+        self,
+        identity: str,
+        record: MemoryRecord,
+        self_model: SelfModel,
+        model_state: Optional[ModelMemoryState] = None,
+    ) -> str:
+        """Atomically persist a reflection memory, self-model, and optional state.
+
+        Payload preparation and validation happen before the transaction. If
+        any database write fails, none of the cycle's three outputs are kept.
+        """
+        if not identity.strip():
+            raise ValueError("identity cannot be empty")
+        if self_model.identity != identity:
+            raise ValueError("self-model identity does not match reflection identity")
+        record.vector = _validate_vector(record.vector)
+        record.resonance_vector = _validate_vector(record.resonance_vector, "resonance_vector")
+        if len(record.vector) != len(record.resonance_vector):
+            raise ValueError("vector and resonance_vector must have the same dimension")
+        record.importance = _validate_unit_interval("importance", record.importance)
+        record.novelty = _validate_unit_interval("novelty", record.novelty)
+        record.salience = _validate_unit_interval("salience", record.salience)
+        memory_values = (
+            record.id,
+            identity,
+            record.kind.value,
+            record.content,
+            json.dumps(record.vector, allow_nan=False),
+            json.dumps(record.resonance_vector, allow_nan=False),
+            record.importance,
+            record.novelty,
+            record.salience,
+            json.dumps(record.associations, allow_nan=False),
+            record.activation_count,
+            record.created_at,
+            record.last_activated,
+            record.decay_rate,
+        )
+        state_payload = self._encode_state(model_state) if model_state is not None else None
+        if state_payload is not None:
+            self._decode_state(state_payload)
+        timestamp = time.time()
+        self_model.updated_at = timestamp
+        self_payload = json.dumps(asdict(self_model), sort_keys=True, allow_nan=False)
+
+        with self.connection:
+            owner = self.connection.execute(
+                "SELECT identity FROM memory WHERE id = ?", (record.id,)
+            ).fetchone()
+            if owner is not None and owner["identity"] != identity:
+                raise ValueError("memory id already belongs to another identity")
+            self.connection.execute(
+                "INSERT OR REPLACE INTO memory VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                memory_values,
+            )
+            self.connection.execute(
+                "INSERT OR REPLACE INTO self_model VALUES (?, ?, ?)",
+                (identity, self_payload, timestamp),
+            )
+            if state_payload is not None:
+                self.connection.execute(
+                    "INSERT OR REPLACE INTO model_state VALUES (?, ?, ?)",
+                    (identity, state_payload, timestamp),
+                )
+        return record.id
+
     def recall(
         self,
         identity: str,

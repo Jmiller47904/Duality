@@ -18,6 +18,7 @@ from duality_lm import (
     SelfModel,
     measure_metastate,
 )
+from duality_lm.memory import MemoryState
 
 
 def tiny_model() -> DualityLM:
@@ -160,6 +161,55 @@ def test_reflection_cycle_updates_self_memory(tmp_path: Path) -> None:
         assert "what changed since the last cycle?" not in updated.unresolved_questions
         assert "what evidence would falsify this conclusion?" in updated.unresolved_questions
         assert self_memories[0].content == result.content
+
+
+def test_reflection_outputs_roll_back_together_when_checkpoint_write_fails(tmp_path: Path) -> None:
+    import sqlite3
+
+    with PersistentMemoryStore(tmp_path / "reflection-transaction.sqlite3") as store:
+        engine = ContinuityEngine(store, "duality-test")
+
+        def reason(context):  # type: ignore[no-untyped-def]
+            return ReflectionResult(content="one measured reflection", vector=[1.0, 0.0])
+
+        store.connection.execute(
+            """
+            CREATE TRIGGER reject_checkpoint BEFORE INSERT ON model_state
+            BEGIN SELECT RAISE(ABORT, 'checkpoint write rejected'); END;
+            """
+        )
+        store.connection.commit()
+
+        with pytest.raises(sqlite3.IntegrityError, match="checkpoint write rejected"):
+            engine.reflect_once([1.0, 0.0], reason, model_state=(None,))
+
+        assert store.recall(
+            "duality-test", [1.0, 0.0], kinds=[MemoryKind.SELF]
+        ) == []
+        assert store.load_self_model("duality-test").cycle_count == 0
+        assert store.load_model_state("duality-test") is None
+
+
+def test_invalid_reflection_checkpoint_cannot_partially_persist(tmp_path: Path) -> None:
+    with PersistentMemoryStore(tmp_path / "invalid-reflection-state.sqlite3") as store:
+        engine = ContinuityEngine(store, "duality-test")
+
+        def reason(context):  # type: ignore[no-untyped-def]
+            return ReflectionResult(content="one measured reflection", vector=[1.0, 0.0])
+
+        malformed_state = MemoryState(
+            attractors=torch.zeros(1, 2),
+            strengths=torch.zeros(1),
+            timestep=torch.zeros(1),
+        )
+        with pytest.raises(ValueError, match="attractors must contain vectors"):
+            engine.reflect_once([1.0, 0.0], reason, model_state=(malformed_state,))
+
+        assert store.recall(
+            "duality-test", [1.0, 0.0], kinds=[MemoryKind.SELF]
+        ) == []
+        assert store.load_self_model("duality-test").cycle_count == 0
+        assert store.load_model_state("duality-test") is None
 
 
 def test_named_snapshot_replays_memory_and_preserves_checkpoint(tmp_path):
