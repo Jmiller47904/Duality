@@ -95,6 +95,13 @@ def _validate_vector(vector: Sequence[float], name: str = "vector") -> List[floa
     return values
 
 
+def _validate_decay_rate(value: float) -> float:
+    value = float(value)
+    if not math.isfinite(value) or value < 0.0:
+        raise ValueError("decay_rate must be finite and >= 0")
+    return value
+
+
 def _cosine(left: Sequence[float], right: Sequence[float]) -> float:
     if len(left) != len(right):
         raise ValueError("memory and query vectors must have the same dimension")
@@ -215,8 +222,7 @@ class PersistentMemoryStore:
         record.importance = _validate_unit_interval("importance", record.importance)
         record.novelty = _validate_unit_interval("novelty", record.novelty)
         record.salience = _validate_unit_interval("salience", record.salience)
-        if not math.isfinite(record.decay_rate) or record.decay_rate < 0.0:
-            raise ValueError("decay_rate must be finite and >= 0")
+        record.decay_rate = _validate_decay_rate(record.decay_rate)
 
         with self.connection:
             owner = self.connection.execute(
@@ -270,6 +276,7 @@ class PersistentMemoryStore:
         record.importance = _validate_unit_interval("importance", record.importance)
         record.novelty = _validate_unit_interval("novelty", record.novelty)
         record.salience = _validate_unit_interval("salience", record.salience)
+        record.decay_rate = _validate_decay_rate(record.decay_rate)
         memory_values = (
             record.id,
             identity,

@@ -136,6 +136,32 @@ def test_remember_rejects_nonfinite_or_negative_decay_rate(
         assert store.recall("duality-test", [1.0, 0.0]) == []
 
 
+@pytest.mark.parametrize(
+    "decay_rate",
+    [float("nan"), float("inf"), float("-inf"), -0.01],
+)
+def test_reflection_cycle_rejects_invalid_decay_rate_before_writing(
+    tmp_path: Path, decay_rate: float
+) -> None:
+    record = MemoryRecord(
+        content="invalid reflection decay",
+        vector=[1.0, 0.0],
+        resonance_vector=[1.0, 0.0],
+        decay_rate=decay_rate,
+    )
+    with PersistentMemoryStore(tmp_path / "invalid-reflection-decay.sqlite3") as store:
+        with pytest.raises(ValueError, match="decay_rate must be finite and >= 0"):
+            store.save_reflection_cycle(
+                "identity", record, SelfModel(identity="identity")
+            )
+
+        for table in ("memory", "self_model", "model_state"):
+            count = store.connection.execute(
+                f"SELECT COUNT(*) FROM {table}"
+            ).fetchone()[0]
+            assert count == 0
+
+
 def test_memory_id_cannot_move_between_identities(tmp_path: Path) -> None:
     memory_id = "shared-record-id"
     original = MemoryRecord(
