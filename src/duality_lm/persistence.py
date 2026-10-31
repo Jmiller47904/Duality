@@ -279,6 +279,8 @@ class PersistentMemoryStore:
             record.decay_rate,
         )
         state_payload = self._encode_state(model_state) if model_state is not None else None
+        if state_payload is not None:
+            self._decode_state(state_payload)
         timestamp = time.time()
         self_model.updated_at = timestamp
         self_payload = json.dumps(asdict(self_model), sort_keys=True, allow_nan=False)
