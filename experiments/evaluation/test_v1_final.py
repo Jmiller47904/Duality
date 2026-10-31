@@ -1,19 +1,8 @@
 #!/usr/bin/env python3
-"""
-DRAI V1 Final Evaluation - The Moment of Truth
+"""Run a small exploratory story-comprehension check for DRAI V1.
 
-This script runs the definitive test of DRAI V1 on the simple stories task.
-
-Expected results:
-- Baseline: ~93% accuracy
-- Phase 2 DRAI: ~13% accuracy (catastrophic failure)
-- V1 DRAI: ~88-93% accuracy (SUCCESS!)
-
-If V1 achieves ~90%+, it proves:
-1. The burn-in insight was correct
-2. The field vector approach works
-3. Soft gating prevents overwhelming influence
-4. V1 is production-ready for small models
+The synthetic task is a narrow behavioral measure. Its score is not evidence
+of general model quality or production readiness.
 """
 
 import sys
@@ -24,6 +13,11 @@ import torch
 import json
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from simple_story_generator import SimpleStoryGenerator
+from benchmarks.story_comprehension_410m.evaluation import (
+    EVALUATION_SEED,
+    generate_answer,
+    seed_model_initialization,
+)
 
 # Import V1
 from src.drai import apply_drai_v1, get_v1_conservative_config, get_drai_v1_stats
@@ -47,26 +41,7 @@ def evaluate_model(model, tokenizer, stories, model_name="Model"):
             # Create prompt
             prompt = f"{story.text}\n\nQuestion: {question['question']}\nAnswer:"
 
-            # Tokenize
-            inputs = tokenizer(prompt, return_tensors="pt")
-
-            # Generate answer
-            outputs = model.generate(
-                inputs["input_ids"],
-                max_new_tokens=20,
-                do_sample=True,
-                temperature=0.7,
-                top_p=0.9,
-                repetition_penalty=1.2,
-                pad_token_id=tokenizer.pad_token_id,
-            )
-
-            # Decode
-            generated = tokenizer.decode(
-                outputs[0][inputs["input_ids"].shape[1]:],
-                skip_special_tokens=True
-            )
-            generated = generated.strip().split()[0] if generated.strip() else ""
+            generated = generate_answer(model, tokenizer, prompt)
 
             # Check correctness
             correct = generated.lower() == question['answer'].lower()
@@ -105,13 +80,9 @@ def evaluate_model(model, tokenizer, stories, model_name="Model"):
 
 def main():
     print("\n" + "="*70)
-    print("DRAI V1 FINAL EVALUATION")
+    print("DRAI V1 EXPLORATORY STORY EVALUATION")
     print("="*70)
-    print("\nThis is the definitive test of DRAI V1.")
-    print("\nExpected:")
-    print("  - Baseline: ~93%")
-    print("  - Phase 2: ~13% (catastrophic)")
-    print("  - V1 DRAI: ~88-93% (SUCCESS!)")
+    print("\nThis measures exact-match answers on one small synthetic dataset.")
     print("\n" + "="*70)
 
     # Configuration
@@ -120,7 +91,7 @@ def main():
 
     # Generate test stories
     print(f"\n[1/4] Generating {num_stories} test stories...")
-    generator = SimpleStoryGenerator(seed=42)
+    generator = SimpleStoryGenerator(seed=EVALUATION_SEED)
     stories = generator.generate_dataset(num_stories=num_stories)
     total_questions = sum(len(story.questions) for story in stories)
     print(f"  ✓ Generated {num_stories} stories ({total_questions} questions)")
@@ -130,6 +101,7 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
 
+    seed_model_initialization(torch)
     model_baseline = AutoModelForCausalLM.from_pretrained(
         model_name,
         dtype=torch.float32,
@@ -156,6 +128,7 @@ def main():
     print(f"    - Layer mode: {config.layer_mode}")
     print(f"    - Theta match: {config.hyperparameters.theta_match}")
 
+    seed_model_initialization(torch)
     model_v1 = AutoModelForCausalLM.from_pretrained(
         model_name,
         dtype=torch.float32,
@@ -183,7 +156,7 @@ def main():
     print(f"{'-'*70}")
     print(f"{'Baseline (no DRAI)':<30} {baseline_results['accuracy']:>11.1%} "
           f"{baseline_results['correct']:>6}/{baseline_results['total']:<6}")
-    print(f"{'V1 DRAI (production-ready)':<30} {v1_results['accuracy']:>11.1%} "
+    print(f"{'V1 DRAI (experimental)':<30} {v1_results['accuracy']:>11.1%} "
           f"{v1_results['correct']:>6}/{v1_results['total']:<6}")
     print(f"{'-'*70}")
 
@@ -209,15 +182,10 @@ def main():
     print(f"VERDICT")
     print(f"{'='*70}")
 
-    if delta >= -0.05:  # Within 5% of baseline
-        print(f"✅ SUCCESS! V1 maintains performance (Δ = {delta:+.1%})")
-        print(f"\nV1 is PRODUCTION-READY for small models!")
-        print(f"\nKey achievements:")
-        print(f"  - No catastrophic degradation (unlike Phase 2's -80%)")
-        print(f"  - Burn-in threshold prevents early instability")
-        print(f"  - Field vector approach provides stable memory")
-        print(f"  - Soft gating ensures gentle influence")
-        verdict = "SUCCESS"
+    if delta >= -0.05:  # Within 5 percentage points on this task only
+        print(f"Within five percentage points of baseline on this task (Δ = {delta:+.1%}).")
+        print("This single synthetic task does not establish generalization or production readiness.")
+        verdict = "WITHIN_TASK_TOLERANCE"
     elif delta >= -0.15:  # 5-15% degradation
         print(f"⚠️  PARTIAL SUCCESS: Mild degradation (Δ = {delta:+.1%})")
         print(f"\nV1 works but needs tuning:")
@@ -257,7 +225,7 @@ def main():
 
     print(f"Results saved to: {results_file}\n")
 
-    return verdict == "SUCCESS"
+    return verdict == "WITHIN_TASK_TOLERANCE"
 
 
 if __name__ == "__main__":

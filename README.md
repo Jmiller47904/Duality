@@ -123,14 +123,19 @@ These emerge from standard transformer operations, not architectural hacks.
 ## Results
 
 **Story Comprehension (Pythia-410M)**  
-- Baseline: **85.0%** (51/60)  
-- DRAI V1: **88.3%** (53/60)  
-- Improvement: **+3.3 points**  
+- Historical baseline: **85.0%** (51/60)
+- Historical DRAI V1: **88.3%** (53/60)
+- Historical difference: **+3.3 percentage points**
 - Runtime overhead depends on hardware, sequence length, and configuration. Use
   `python benchmarks/native_memory_ablation.py` for a same-host memory-on/off
   latency and memory-cost measurement; no universal overhead bound is claimed.
 
-This task is intentionally simple — the point is demonstrating that persistent internal state produces consistent, reproducible gains even on small models.
+These figures came from one small synthetic story run whose generator was seeded,
+but whose model decoding used unseeded sampling. They are historical observations,
+not a reproducible result or evidence of general improvement. The current story
+benchmark uses greedy decoding and a fixed initialization seed; its new scores
+must be measured before making a comparison. See
+[`benchmarks/story_comprehension_410m/README.md`](benchmarks/story_comprehension_410m/README.md).
 
 ---
 
@@ -227,8 +232,11 @@ See `src/drai/config.py` for details.
 
 | Model           | Task                 | Baseline | DRAI V1 | Δ     | Status       |
 |----------------|----------------------|----------|---------|-------|---------------|
-| pythia-410m    | Story comprehension  | 85.0%    | 88.3%   | +3.3% | Validated     |
+| pythia-410m    | Story comprehension  | 85.0%*   | 88.3%*  | +3.3 pp* | Historical single run |
 | pythia-70m     | Story comprehension  | 0.0%     | 0.0%    | 0.0%  | Too small     |
+
+\* Historical scores used unseeded sampling; the deterministic benchmark protocol
+has not been rerun, so these figures are not a result for the current protocol.
 
 ### Predictions (based on scaling behaviour)
 
