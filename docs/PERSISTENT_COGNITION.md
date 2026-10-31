@@ -54,6 +54,11 @@ sqrt(cosine similarity)
 * temporal decay
 ```
 
+Memory inputs are validated before storage. In particular, `decay_rate` must be
+finite and non-negative so temporal decay cannot introduce non-finite recall
+scores. Cosine similarity rescales finite vectors before its dot product and
+norm calculations, preventing intermediate overflow for large finite values.
+
 This is deliberately not hidden behind a database-specific nearest-neighbor
 implementation. Each factor can be measured or removed in an ablation.
 

@@ -1,6 +1,7 @@
 """Tests for durable memory, self-modeling, and bounded reflection."""
 
 import json
+import math
 from pathlib import Path
 
 import pytest
@@ -84,6 +85,54 @@ def test_recall_rejects_vector_dimension_mismatch(tmp_path: Path) -> None:
         )
         with pytest.raises(ValueError, match="same dimension"):
             store.recall("duality-test", [1.0, 0.0])
+
+
+def test_recall_ranks_large_finite_vectors_without_overflow(tmp_path: Path) -> None:
+    query = [1e308, 1e308]
+    matching = MemoryRecord(
+        content="matching large vector",
+        vector=query,
+        resonance_vector=query,
+        importance=0.5,
+    )
+    orthogonal = MemoryRecord(
+        content="orthogonal large vector",
+        vector=[1e308, -1e308],
+        resonance_vector=[1e308, -1e308],
+        importance=1.0,
+    )
+
+    with PersistentMemoryStore(tmp_path / "memory.sqlite3") as store:
+        store.remember("duality-test", matching)
+        store.remember("duality-test", orthogonal)
+
+        recalled = store.recall(
+            "duality-test", query, limit=2, now=matching.last_activated
+        )
+
+        assert recalled[0].id == matching.id
+        assert all(math.isfinite(record.score) for record in recalled)
+
+
+@pytest.mark.parametrize(
+    "decay_rate",
+    [float("nan"), float("inf"), float("-inf"), -0.01],
+)
+def test_remember_rejects_nonfinite_or_negative_decay_rate(
+    tmp_path: Path, decay_rate: float
+) -> None:
+    with PersistentMemoryStore(tmp_path / "memory.sqlite3") as store:
+        record = MemoryRecord(
+            content="invalid decay rate",
+            vector=[1.0, 0.0],
+            resonance_vector=[1.0, 0.0],
+            decay_rate=decay_rate,
+        )
+
+        with pytest.raises(ValueError, match="decay_rate must be finite and >= 0"):
+            store.remember("duality-test", record)
+
+        assert store.recall("duality-test", [1.0, 0.0]) == []
 
 
 def test_memory_id_cannot_move_between_identities(tmp_path: Path) -> None:
