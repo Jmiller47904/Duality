@@ -180,23 +180,26 @@ class ContinuityEngine:
             raise ValueError("reflection content cannot be empty")
 
         association_ids = [memory.id for memory in recalled]
-        self.observe(
-            result.content,
-            result.vector,
-            kind=MemoryKind.SELF,
-            importance=result.importance,
-            novelty=result.novelty,
-            salience=result.salience,
-            associations=association_ids,
-        )
-
         if result.resolved_question in self_model.unresolved_questions:
             self_model.unresolved_questions.remove(result.resolved_question)
         if result.new_question and result.new_question not in self_model.unresolved_questions:
             self_model.unresolved_questions.append(result.new_question)
         self_model.cycle_count += 1
         self_model.last_reflection = result.content
-        self.store.save_self_model(self_model)
-        if model_state is not None:
-            self.checkpoint(model_state)
+        reflection_memory = MemoryRecord(
+            content=result.content,
+            vector=list(result.vector),
+            resonance_vector=list(result.vector),
+            kind=MemoryKind.SELF,
+            importance=result.importance,
+            novelty=result.novelty,
+            salience=result.salience,
+            associations=association_ids,
+        )
+        self.store.save_reflection_cycle(
+            self.identity,
+            reflection_memory,
+            self_model,
+            model_state=model_state,
+        )
         return result
