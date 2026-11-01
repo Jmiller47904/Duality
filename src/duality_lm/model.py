@@ -296,9 +296,7 @@ class DualityLM(nn.Module):
         output_cache = tuple(next_cache) if use_cache else None
         if persistent_memory:
             self._persistent_memory_state = (
-                tuple(state.detach() if state is not None else None for state in output_state)
-                if output_state is not None
-                else None
+                tuple(state.detach() if state is not None else None for state in next_states)
             )
 
         return DualityLMOutput(
