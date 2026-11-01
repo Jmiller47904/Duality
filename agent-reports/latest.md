@@ -1,9 +1,7 @@
-# Duality agent report
+# Duality agent report (2026-11-01)
 
-No new code change was warranted. The next roadmap item, time- and scope-aware contradiction review, has no defined data model or evaluation semantics; introducing one now would invent behavior. The full Pythia-410M rerun is an expensive evaluation and was not run.
+Added a small deterministic persistence smoke evaluation and regression check for snapshot replay after SQLite reopen, provenance checksum status, contradiction candidates, reset counts, and cross-identity isolation. It uses an untrained tiny CPU memory layer and synthetic data; it makes no claims about consciousness or model quality.
 
-Merged since the previous report:
-- [PR #21 — V1 burn-in statistics](https://github.com/Jmiller47904/Duality/pull/21)
-- [PR #22 — Sourced contradiction candidates](https://github.com/Jmiller47904/Duality/pull/22)
+PR: https://github.com/Jmiller47904/Duality/pull/23
 
-Current `main` is `1f1bb7c1`. GitHub reports latest CI and V1 smoke checks passed; Python package contract, native cognition, PyTorch environment, and legacy informational test checks all passed. The earlier Pythia-410M reproduction run was cancelled. No open issues or PRs were found. No local tests were run this turn, no PRs were merged in this run, and no release was published.
+Reviewed default branch `main` at `1f1bb7c1`; no pre-existing open issues or PRs. Latest main CI and V1 smoke had passed. Checks completed locally: Python compileall and `git diff --check`. The smoke script could not start because PyTorch is unavailable; pytest is also unavailable, so the focused regression was not run. PR CI was queued at the last check. GitHub reported the PR mergeable; left open for the designated merge monitor. No PR merged or release published.
