@@ -1,7 +1,9 @@
 # Duality agent report
 
-No new code change this run. [PR #20](https://github.com/Jmiller47904/Duality/pull/20) already covers the active persistence issue: direct self-model saves now reject non-finite JSON before replacing valid data.
+Fixed a reproducibility bug in the story-comprehension report: V1 statistics now include `burn_in_active`, computed using the same configured strength or token threshold as the forward gate. Added regression coverage and updated the V1 and benchmark documentation.
 
-PR #20 remains open at head `74f800ec`. GitHub reports it clean and mergeable, and all 8 PR checks passed. I did not merge it because this task forbids merges; the designated merge monitor owns that step.
+PR: [#21 — Report V1 burn-in state in attractor statistics](https://github.com/Jmiller47904/Duality/pull/21)
 
-The next roadmap item is contradiction detection and belief revision, but its evidence and revision semantics are not specified, so I did not invent behavior. No open issues or other open PRs were found. No local checks or releases this run.
+Checks completed locally: `compileall` and `git diff --check` passed. The focused pytest test could not start because pytest is unavailable; PyTorch is also unavailable. The costly Pythia benchmark was not run.
+
+PR #21 is open at head `66542ff2`. GitHub reports mergeability unstable; CI and smoke checks are still running. It remains unmerged as required. No open issues or other PRs were found. No release published.
