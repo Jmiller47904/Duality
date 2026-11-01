@@ -63,6 +63,36 @@ class MemoryRecord:
     score: float = 0.0
 
 
+@dataclass(frozen=True)
+class ClaimRecord:
+    """One immutable, sourced observation used for contradiction review.
+
+    A claim records what a caller observed. It does not assert that the value
+    is true. Differing values for the same subject and predicate are surfaced
+    as candidates for review rather than resolved automatically.
+    """
+
+    subject: str
+    predicate: str
+    value: Any
+    provenance: Dict[str, str]
+    confidence: float = 0.5
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: float = field(default_factory=time.time)
+
+
+@dataclass(frozen=True)
+class ContradictionCandidate:
+    """A pair of stored observations whose canonical JSON values differ."""
+
+    subject: str
+    predicate: str
+    left_id: str
+    right_id: str
+    left_value: Any
+    right_value: Any
+
+
 @dataclass
 class SelfModel:
     """Inspectable identity continuity rather than an implicit persona claim."""
@@ -172,11 +202,12 @@ class PersistentMemoryStore:
 
         _validate_identity(identity)
 
-        tables = ["memory", "model_state", "self_model"]
+        tables = ["memory", "memory_claim", "model_state", "self_model"]
         if include_snapshots:
             tables.append("model_snapshot")
         deleted = {
             "memory": 0,
+            "memory_claim": 0,
             "model_state": 0,
             "self_model": 0,
             "model_snapshot": 0,
@@ -230,21 +261,29 @@ class PersistentMemoryStore:
             );
             CREATE INDEX IF NOT EXISTS idx_memory_identity_kind
             ON memory(identity, kind);
+            CREATE TABLE IF NOT EXISTS memory_claim (
+                id TEXT PRIMARY KEY,
+                identity TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                predicate TEXT NOT NULL,
+                value_json TEXT NOT NULL,
+                provenance_json TEXT NOT NULL,
+                confidence REAL NOT NULL,
+                created_at REAL NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_memory_claim_identity_key
+            ON memory_claim(identity, subject, predicate, created_at);
             """)
         snapshot_columns = {
             row["name"] for row in self.connection.execute("PRAGMA table_info(model_snapshot)")
         }
         if "provenance_sha256" not in snapshot_columns:
-            self.connection.execute(
-                "ALTER TABLE model_snapshot ADD COLUMN provenance_sha256 TEXT"
-            )
+            self.connection.execute("ALTER TABLE model_snapshot ADD COLUMN provenance_sha256 TEXT")
         model_state_columns = {
             row["name"] for row in self.connection.execute("PRAGMA table_info(model_state)")
         }
         if "payload_sha256" not in model_state_columns:
-            self.connection.execute(
-                "ALTER TABLE model_state ADD COLUMN payload_sha256 TEXT"
-            )
+            self.connection.execute("ALTER TABLE model_state ADD COLUMN payload_sha256 TEXT")
         self.connection.commit()
 
     def remember(self, identity: str, record: MemoryRecord) -> str:
@@ -288,6 +327,128 @@ class PersistentMemoryStore:
                 ),
             )
         return record.id
+
+    def record_claim(self, identity: str, claim: ClaimRecord) -> str:
+        """Store one immutable observation with caller-supplied provenance."""
+
+        _validate_identity(identity)
+        if not isinstance(claim.subject, str) or not claim.subject.strip():
+            raise ValueError("claim subject cannot be empty")
+        if not isinstance(claim.predicate, str) or not claim.predicate.strip():
+            raise ValueError("claim predicate cannot be empty")
+        if not isinstance(claim.id, str) or not claim.id.strip():
+            raise ValueError("claim id cannot be empty")
+        if not isinstance(claim.provenance, dict) or not claim.provenance:
+            raise ValueError("claim provenance must be a nonempty string mapping")
+        if not all(
+            isinstance(key, str) and key.strip() and isinstance(value, str) and value.strip()
+            for key, value in claim.provenance.items()
+        ):
+            raise ValueError("claim provenance must be a nonempty string mapping")
+        confidence = _validate_unit_interval("confidence", claim.confidence)
+        try:
+            value_json = json.dumps(
+                claim.value, sort_keys=True, separators=(",", ":"), allow_nan=False
+            )
+            provenance_json = json.dumps(
+                claim.provenance, sort_keys=True, separators=(",", ":"), allow_nan=False
+            )
+        except (TypeError, ValueError) as error:
+            raise ValueError("claim value and provenance must be strict JSON") from error
+        with self.connection:
+            owner = self.connection.execute(
+                "SELECT identity FROM memory_claim WHERE id = ?", (claim.id,)
+            ).fetchone()
+            if owner is not None:
+                if owner["identity"] != identity:
+                    raise ValueError("claim id already belongs to another identity")
+                raise ValueError("claim id already exists")
+            self.connection.execute(
+                "INSERT INTO memory_claim VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    claim.id,
+                    identity,
+                    claim.subject.strip(),
+                    claim.predicate.strip(),
+                    value_json,
+                    provenance_json,
+                    confidence,
+                    float(claim.created_at),
+                ),
+            )
+        return claim.id
+
+    def list_claims(
+        self,
+        identity: str,
+        *,
+        subject: Optional[str] = None,
+        predicate: Optional[str] = None,
+    ) -> List[ClaimRecord]:
+        """List identity-scoped claims without changing or ranking them."""
+
+        _validate_identity(identity)
+        parameters: List[Any] = [identity]
+        sql = "SELECT * FROM memory_claim WHERE identity = ?"
+        for column, value in (("subject", subject), ("predicate", predicate)):
+            if value is not None:
+                if not isinstance(value, str) or not value.strip():
+                    raise ValueError(f"{column} cannot be empty")
+                sql += f" AND {column} = ?"
+                parameters.append(value.strip())
+        sql += " ORDER BY created_at, id"
+        rows = self.connection.execute(sql, parameters).fetchall()
+        return [
+            ClaimRecord(
+                id=row["id"],
+                subject=row["subject"],
+                predicate=row["predicate"],
+                value=json.loads(row["value_json"]),
+                provenance=json.loads(row["provenance_json"]),
+                confidence=float(row["confidence"]),
+                created_at=float(row["created_at"]),
+            )
+            for row in rows
+        ]
+
+    def find_contradictions(
+        self,
+        identity: str,
+        *,
+        subject: Optional[str] = None,
+        predicate: Optional[str] = None,
+    ) -> List[ContradictionCandidate]:
+        """Return differing values for matching keys as review candidates.
+
+        Equality uses canonical strict JSON, so dictionary key order does not
+        create a conflict. The method does not infer truth, entailment,
+        negation, units, or whether two sources describe the same time period.
+        """
+
+        claims = self.list_claims(identity, subject=subject, predicate=predicate)
+        candidates: List[ContradictionCandidate] = []
+        for index, left in enumerate(claims):
+            left_json = json.dumps(
+                left.value, sort_keys=True, separators=(",", ":"), allow_nan=False
+            )
+            for right in claims[index + 1 :]:
+                if (left.subject, left.predicate) != (right.subject, right.predicate):
+                    continue
+                right_json = json.dumps(
+                    right.value, sort_keys=True, separators=(",", ":"), allow_nan=False
+                )
+                if left_json != right_json:
+                    candidates.append(
+                        ContradictionCandidate(
+                            subject=left.subject,
+                            predicate=left.predicate,
+                            left_id=left.id,
+                            right_id=right.id,
+                            left_value=left.value,
+                            right_value=right.value,
+                        )
+                    )
+        return candidates
 
     def save_reflection_cycle(
         self,
@@ -655,9 +816,7 @@ class PersistentMemoryStore:
         ).fetchall()
         snapshots = []
         for row in rows:
-            integrity = _verify_snapshot_provenance(
-                row["provenance"], row["provenance_sha256"]
-            )
+            integrity = _verify_snapshot_provenance(row["provenance"], row["provenance_sha256"])
             snapshots.append(
                 {
                     "label": row["label"],

@@ -86,7 +86,8 @@ training command, state-passing API, and current limitations.
 `duality_lm` now includes an experimental continuity layer that can preserve
 attractor tensors across process restarts, store episodic/semantic/self memory,
 perform resonance-weighted recall, maintain an inspectable self-model, measure
-metacognitive state, and execute one bounded reflection cycle at a time. A
+metacognitive state, retain sourced claims, surface contradiction candidates,
+and execute one bounded reflection cycle at a time. A
 reflection's self-memory, updated self-model, and optional attractor checkpoint
 are committed together; a database write failure rolls those outputs back. Recall
 activation counts remain a separate record of which memories were selected.
