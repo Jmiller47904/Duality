@@ -1,1 +1,1 @@
-Retrying Discord delivery after workflow diagnostic correction.
+Fresh delivery check started after the webhook setup was saved.
