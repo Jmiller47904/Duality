@@ -125,6 +125,9 @@ retained state bytes, active slots, and the mean absolute logit change between a
 continued state and a reset state. Both models share the same non-memory weights.
 Latency varies by host; compare runs only on the same machine. An optional
 `--max-latency-ratio` turns a locally established ratio into a regression gate.
+The callable benchmark restores PyTorch's CPU RNG state and thread count on
+completion or failure, so it does not perturb later experiments in the same
+process.
 
 This benchmark uses an untrained tiny model. A nonzero continuation delta shows
 that retained state changed computation; it does not show better recall,

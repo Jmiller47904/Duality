@@ -1,6 +1,7 @@
 """Acceptance checks for the deterministic native memory benchmark."""
 
 import pytest
+import torch
 
 from benchmarks.native_memory_ablation import run_benchmark
 
@@ -16,6 +17,18 @@ def test_native_memory_ablation_reports_measurable_costs_and_behavior() -> None:
     assert result["memory_on"]["retained_state_bytes"] > 0
     assert result["memory_on"]["active_slots_after_primer"] > 0
     assert result["comparison"]["continuation_logit_mean_abs_delta"] > 0.0
+
+
+def test_native_memory_ablation_restores_caller_rng_state() -> None:
+    torch.manual_seed(1234)
+    expected_next = torch.rand(1)
+    torch.manual_seed(1234)
+    initial_state = torch.random.get_rng_state().clone()
+
+    run_benchmark(seed=29, sequence_length=4, warmup=0, iterations=1)
+
+    assert torch.equal(torch.random.get_rng_state(), initial_state)
+    assert torch.equal(torch.rand(1), expected_next)
 
 
 @pytest.mark.parametrize(
