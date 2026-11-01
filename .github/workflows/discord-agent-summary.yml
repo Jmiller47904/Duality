@@ -32,7 +32,7 @@ jobs:
               raise SystemExit("DISCORD_WEBHOOK_URL secret is not configured")
           with open("agent-reports/latest.md", encoding="utf-8") as report_file:
               report = report_file.read().strip()
-          prefix = "**Duality Build Agent**\\n"
+          prefix = "**Duality Build Agent**\n"
           content = prefix + report
           if len(content) > 1900:
               content = content[:1897] + "..."
