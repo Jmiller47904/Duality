@@ -94,7 +94,9 @@ The current script uses greedy decoding (`do_sample=False`), seeds model
 initialization, and uses seed 42 for synthetic story generation. Greedy decoding
 removes token-sampling randomness; results can still vary with library versions
 or hardware. The updated protocol has not been run to refresh the historical
-scores above.
+scores above. V1 statistics include `burn_in_active`, derived from the same
+configured strength or token threshold used by the resonance layer; this keeps
+the final comparison report aligned with the runtime gate.
 
 ```bash
 python run.py

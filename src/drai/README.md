@@ -142,7 +142,7 @@ This reveals:
 
 - active attractors  
 - total and per-layer strength  
-- burn-in status  
+- `burn_in_active`, computed using the configured strength or token threshold
 - equilibrium dynamics  
 
 ---
