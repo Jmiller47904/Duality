@@ -112,6 +112,15 @@ number of tokens processed by each memory-enabled block. These values are
 observability signals, not a claim that the model has human-like memory or
 reasoning.
 
+### Persisted state integrity
+
+New active model-state checkpoints store a SHA-256 checksum, which is verified
+before the JSON payload is decoded. Existing SQLite stores are migrated
+without rewriting their data: old active-state rows have no checksum and remain
+readable for compatibility, but cannot be checked until saved again. Checksums
+detect accidental payload corruption; they do not authenticate a database
+against someone who can edit both the payload and its checksum.
+
 ### CPU memory ablation
 
 Run a deterministic tiny-model comparison without downloading a checkpoint:

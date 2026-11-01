@@ -204,7 +204,8 @@ class PersistentMemoryStore:
             CREATE TABLE IF NOT EXISTS model_state (
                 identity TEXT PRIMARY KEY,
                 payload TEXT NOT NULL,
-                updated_at REAL NOT NULL
+                updated_at REAL NOT NULL,
+                payload_sha256 TEXT
             );
             CREATE TABLE IF NOT EXISTS self_model (
                 identity TEXT PRIMARY KEY,
@@ -236,6 +237,13 @@ class PersistentMemoryStore:
         if "provenance_sha256" not in snapshot_columns:
             self.connection.execute(
                 "ALTER TABLE model_snapshot ADD COLUMN provenance_sha256 TEXT"
+            )
+        model_state_columns = {
+            row["name"] for row in self.connection.execute("PRAGMA table_info(model_state)")
+        }
+        if "payload_sha256" not in model_state_columns:
+            self.connection.execute(
+                "ALTER TABLE model_state ADD COLUMN payload_sha256 TEXT"
             )
         self.connection.commit()
 
@@ -321,6 +329,11 @@ class PersistentMemoryStore:
             record.decay_rate,
         )
         state_payload = self._encode_state(model_state) if model_state is not None else None
+        state_checksum = (
+            hashlib.sha256(state_payload.encode("utf-8")).hexdigest()
+            if state_payload is not None
+            else None
+        )
         if state_payload is not None:
             self._decode_state(state_payload)
         timestamp = time.time()
@@ -343,8 +356,9 @@ class PersistentMemoryStore:
             )
             if state_payload is not None:
                 self.connection.execute(
-                    "INSERT OR REPLACE INTO model_state VALUES (?, ?, ?)",
-                    (identity, state_payload, timestamp),
+                    "INSERT OR REPLACE INTO model_state "
+                    "(identity, payload, updated_at, payload_sha256) VALUES (?, ?, ?, ?)",
+                    (identity, state_payload, timestamp, state_checksum),
                 )
         return record.id
 
@@ -439,10 +453,12 @@ class PersistentMemoryStore:
 
         _validate_identity(identity)
         payload = self._encode_state(state)
+        checksum = hashlib.sha256(payload.encode("utf-8")).hexdigest()
         timestamp = time.time()
         self.connection.execute(
-            "INSERT OR REPLACE INTO model_state VALUES (?, ?, ?)",
-            (identity, payload, timestamp),
+            "INSERT OR REPLACE INTO model_state "
+            "(identity, payload, updated_at, payload_sha256) VALUES (?, ?, ?, ?)",
+            (identity, payload, timestamp, checksum),
         )
         self.connection.commit()
 
@@ -451,14 +467,23 @@ class PersistentMemoryStore:
         identity: str,
         device: Optional[Union[str, torch.device]] = None,
     ) -> Optional[ModelMemoryState]:
-        """Restore a saved attractor state without executing pickle payloads."""
+        """Restore a saved attractor state after checking its stored checksum.
+
+        Rows created before checksum support remain readable after migration,
+        but their missing checksum cannot detect payload corruption.
+        """
 
         _validate_identity(identity)
         row = self.connection.execute(
-            "SELECT payload FROM model_state WHERE identity = ?", (identity,)
+            "SELECT payload, payload_sha256 FROM model_state WHERE identity = ?", (identity,)
         ).fetchone()
         if row is None:
             return None
+        expected_checksum = row["payload_sha256"]
+        if expected_checksum is not None:
+            actual_checksum = hashlib.sha256(row["payload"].encode("utf-8")).hexdigest()
+            if actual_checksum != expected_checksum:
+                raise ValueError("model state checksum mismatch")
         return self._decode_state(row["payload"], device)
 
     @staticmethod
