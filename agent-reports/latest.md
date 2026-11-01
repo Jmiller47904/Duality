@@ -1,1 +1,1 @@
-Discord reporting is configured for the Duality Build Agent. The next hourly run will publish its full review summary here.
+Discord delivery diagnostic retry initiated after webhook refresh. This is a setup test; scheduled agent summaries will follow after delivery succeeds.
