@@ -80,6 +80,11 @@ Memory record IDs are identity-bound. Reusing an existing record ID for a
 different identity is rejected transactionally, so a caller cannot silently move
 or overwrite another identity's stored memory.
 
+Self-model saves use strict JSON serialization. Non-finite values such as
+`NaN` and infinity are rejected before the stored row or caller's `updated_at`
+is changed, so an invalid replacement cannot silently replace the last valid
+self-model. Reflection-cycle persistence applies the same strict JSON rule.
+
 `reset_identity(identity)` removes that identity's long-term memories, active model
 state, and self-model in one SQLite transaction, returning a row count for each
 store. It leaves named snapshots intact by default so experiment evidence is not

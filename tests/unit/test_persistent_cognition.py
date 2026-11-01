@@ -238,6 +238,30 @@ def test_reflection_cycle_updates_self_memory(tmp_path: Path) -> None:
         assert self_memories[0].content == result.content
 
 
+@pytest.mark.parametrize("belief", [float("nan"), float("inf"), float("-inf")])
+def test_save_self_model_rejects_nonfinite_beliefs_without_overwriting(
+    tmp_path: Path, belief: float
+) -> None:
+    with PersistentMemoryStore(tmp_path / "self-model-json.sqlite3") as store:
+        store.save_self_model(
+            SelfModel(identity="a", goals=["existing"], beliefs={"claim": 0.75})
+        )
+        invalid = SelfModel(
+            identity="a",
+            goals=["invalid replacement"],
+            beliefs={"claim": belief},
+            updated_at=123.0,
+        )
+
+        with pytest.raises(ValueError, match="Out of range float"):
+            store.save_self_model(invalid)
+
+        assert invalid.updated_at == 123.0
+        persisted = store.load_self_model("a")
+        assert persisted.goals == ["existing"]
+        assert persisted.beliefs == {"claim": 0.75}
+
+
 def test_reflection_outputs_roll_back_together_when_checkpoint_write_fails(tmp_path: Path) -> None:
     import sqlite3
 
