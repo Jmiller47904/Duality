@@ -381,6 +381,44 @@ def test_identity_reset_is_scoped_and_preserves_snapshots_by_default(tmp_path):
             store.reset_identity("  ")
 
 
+@pytest.mark.parametrize("identity", ["", "  ", None])
+def test_active_state_save_rejects_blank_identity_before_writing(tmp_path, identity):
+    with PersistentMemoryStore(tmp_path / "invalid-state-identity.sqlite3") as store:
+        with pytest.raises(ValueError, match="identity"):
+            store.save_model_state(identity, (None,))
+
+        count = store.connection.execute("SELECT COUNT(*) FROM model_state").fetchone()[0]
+        assert count == 0
+
+
+@pytest.mark.parametrize("identity", ["", "  ", None])
+def test_self_model_save_rejects_blank_identity_before_writing(tmp_path, identity):
+    model = SelfModel(identity=identity, goals=["must not persist"])
+    original_updated_at = model.updated_at
+    with PersistentMemoryStore(tmp_path / "invalid-self-identity.sqlite3") as store:
+        with pytest.raises(ValueError, match="identity"):
+            store.save_self_model(model)
+
+        count = store.connection.execute("SELECT COUNT(*) FROM self_model").fetchone()[0]
+        assert count == 0
+        assert model.updated_at == original_updated_at
+
+
+@pytest.mark.parametrize("identity", ["", "  ", None])
+def test_identity_scoped_reads_reject_invalid_identity(tmp_path, identity):
+    with PersistentMemoryStore(tmp_path / "invalid-read-identity.sqlite3") as store:
+        with pytest.raises(ValueError, match="identity"):
+            store.recall(identity, [1.0, 0.0])
+        with pytest.raises(ValueError, match="identity"):
+            store.load_model_state(identity)
+        with pytest.raises(ValueError, match="identity"):
+            store.load_self_model(identity)
+        with pytest.raises(ValueError, match="identity"):
+            store.list_snapshots(identity)
+        with pytest.raises(ValueError, match="identity"):
+            store.load_snapshot(identity, "baseline")
+
+
 @pytest.mark.parametrize(
     "payload, message",
     [

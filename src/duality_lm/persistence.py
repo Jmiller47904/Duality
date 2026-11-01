@@ -95,6 +95,14 @@ def _validate_vector(vector: Sequence[float], name: str = "vector") -> List[floa
     return values
 
 
+def _validate_identity(identity: str) -> str:
+    if not isinstance(identity, str):
+        raise ValueError("identity must be a string")
+    if not identity.strip():
+        raise ValueError("identity cannot be empty")
+    return identity
+
+
 def _validate_decay_rate(value: float) -> float:
     value = float(value)
     if not math.isfinite(value) or value < 0.0:
@@ -148,8 +156,7 @@ class PersistentMemoryStore:
         The returned row counts make reset behavior directly auditable.
         """
 
-        if not identity.strip():
-            raise ValueError("identity cannot be empty")
+        _validate_identity(identity)
 
         tables = ["memory", "model_state", "self_model"]
         if include_snapshots:
@@ -213,8 +220,7 @@ class PersistentMemoryStore:
     def remember(self, identity: str, record: MemoryRecord) -> str:
         """Persist an episodic, semantic, or self memory."""
 
-        if not identity.strip():
-            raise ValueError("identity cannot be empty")
+        _validate_identity(identity)
         record.vector = _validate_vector(record.vector)
         record.resonance_vector = _validate_vector(record.resonance_vector, "resonance_vector")
         if len(record.vector) != len(record.resonance_vector):
@@ -265,8 +271,7 @@ class PersistentMemoryStore:
         Payload preparation and validation happen before the transaction. If
         any database write fails, none of the cycle's three outputs are kept.
         """
-        if not identity.strip():
-            raise ValueError("identity cannot be empty")
+        _validate_identity(identity)
         if self_model.identity != identity:
             raise ValueError("self-model identity does not match reflection identity")
         record.vector = _validate_vector(record.vector)
@@ -338,6 +343,7 @@ class PersistentMemoryStore:
         decay then modulate that base activation.
         """
 
+        _validate_identity(identity)
         query = _validate_vector(query_vector, "query_vector")
         if limit <= 0:
             return []
@@ -409,6 +415,7 @@ class PersistentMemoryStore:
     def save_model_state(self, identity: str, state: ModelMemoryState) -> None:
         """Serialize all memory-enabled transformer layers transactionally."""
 
+        _validate_identity(identity)
         payload = self._encode_state(state)
         timestamp = time.time()
         self.connection.execute(
@@ -424,6 +431,7 @@ class PersistentMemoryStore:
     ) -> Optional[ModelMemoryState]:
         """Restore a saved attractor state without executing pickle payloads."""
 
+        _validate_identity(identity)
         row = self.connection.execute(
             "SELECT payload FROM model_state WHERE identity = ?", (identity,)
         ).fetchone()
@@ -562,8 +570,9 @@ class PersistentMemoryStore:
         Labels are unique within an identity. Capture weights/config/input and
         RNG separately when replaying model output; this stores only memory.
         """
-        if not identity.strip() or not label.strip():
-            raise ValueError("identity and label cannot be empty")
+        _validate_identity(identity)
+        if not isinstance(label, str) or not label.strip():
+            raise ValueError("label cannot be empty")
         metadata = {} if provenance is None else dict(provenance)
         if not all(isinstance(k, str) and isinstance(v, str) for k, v in metadata.items()):
             raise ValueError("provenance must map strings to strings")
@@ -585,6 +594,7 @@ class PersistentMemoryStore:
 
     def list_snapshots(self, identity: str) -> List[Dict[str, Any]]:
         """List checkpoint metadata without loading tensors or changing state."""
+        _validate_identity(identity)
         rows = self.connection.execute(
             "SELECT label, sha256, provenance, created_at FROM model_snapshot "
             "WHERE identity = ? ORDER BY created_at, label",
@@ -598,6 +608,7 @@ class PersistentMemoryStore:
         The checksum detects corruption, not malicious modification of both
         the database payload and checksum. The active checkpoint is untouched.
         """
+        _validate_identity(identity)
         row = self.connection.execute(
             "SELECT payload, sha256 FROM model_snapshot WHERE identity = ? AND label = ?",
             (identity, label),
@@ -610,6 +621,7 @@ class PersistentMemoryStore:
         return self._decode_state(row["payload"], device)
 
     def save_self_model(self, model: SelfModel) -> None:
+        _validate_identity(model.identity)
         model.updated_at = time.time()
         self.connection.execute(
             "INSERT OR REPLACE INTO self_model VALUES (?, ?, ?)",
@@ -618,6 +630,7 @@ class PersistentMemoryStore:
         self.connection.commit()
 
     def load_self_model(self, identity: str) -> SelfModel:
+        _validate_identity(identity)
         row = self.connection.execute(
             "SELECT payload FROM self_model WHERE identity = ?", (identity,)
         ).fetchone()

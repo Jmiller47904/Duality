@@ -35,6 +35,12 @@ blocks. `PersistentMemoryStore.save_model_state()` serializes it as JSON in
 SQLite and `load_model_state()` reconstructs tensors on a requested device.
 The format does not use pickle.
 
+Every operation on identity-scoped data, including reads, writes, and reset,
+requires a non-empty, non-whitespace identity key. This applies to active model
+state, self-models, memories, reflection cycles, and named snapshots. Identity
+values are preserved as supplied; the check does not silently normalize or
+merge keys.
+
 ### Long-term memory
 
 Every `MemoryRecord` belongs to one of three channels:
