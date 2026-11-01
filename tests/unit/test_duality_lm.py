@@ -86,6 +86,28 @@ def test_persistent_memory_can_be_reset() -> None:
     assert reset.memory_state[2].timestep.item() == 1.0
 
 
+def test_persistent_memory_survives_when_state_output_is_suppressed() -> None:
+    model = tiny_model().eval()
+    prompt = torch.tensor([[1, 3, 4, 5]], dtype=torch.long)
+
+    hidden_output = model(
+        prompt,
+        persistent_memory=True,
+        return_memory_state=False,
+    )
+
+    assert hidden_output.memory_state is None
+    assert any(item["active_slots"] > 0 for item in model.memory_stats())
+
+    continuation = model(prompt[:, :1], persistent_memory=True)
+    assert continuation.memory_state is not None
+    assert continuation.memory_state[2] is not None
+    assert continuation.memory_state[2].timestep.item() == 5.0
+
+    model.reset_memory()
+    assert all(item["active_slots"] == 0 for item in model.memory_stats())
+
+
 def test_config_rejects_bad_memory_layer() -> None:
     with pytest.raises(ValueError):
         DualityLMConfig(n_layers=2, memory_layers=(2,))
