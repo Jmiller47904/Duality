@@ -1,7 +1,7 @@
 # Duality agent report
 
-Continued [PR #19](https://github.com/Jmiller47904/Duality/pull/19), fixing its smoke workflow to install CPU-only PyTorch after the prior runner ran out of disk space. The focused persistence checksum change and migration coverage remain in the PR.
+Opened [PR #20](https://github.com/Jmiller47904/Duality/pull/20) to make direct self-model persistence reject non-finite JSON values before replacing stored data. Added regression coverage and documentation.
 
-**Checks completed:** `python -m compileall -q src tests`, `git diff --check`, and workflow YAML parsing passed. Local pytest could not start because pytest is unavailable. GitHub reports all 8 checks on the current PR head succeeded, including the smoke test and persistence tests.
+**Checks completed:** `python -m compileall -q src tests` and `git diff --check` passed. The focused pytest suite could not start because pytest and PyTorch are unavailable locally.
 
-PR #19 remains open and unmerged as directed. No other open PRs or independent open issues were found. No release was published.
+PR #20 is open and unmerged at head `74f800ec`. GitHub reports it mergeable, but its merge state is unstable while all 8 checks are queued. Main CI and smoke checks on the previous main head passed. No open issues or other open PRs were found. No release was published.
