@@ -1,7 +1,7 @@
 # Duality agent report
 
-Implemented active model-state SHA-256 integrity checks in [PR #19](https://github.com/Jmiller47904/Duality/pull/19). New and reflection-cycle checkpoint writes include a checksum; loads verify it before decoding. Legacy SQLite rows remain readable without verification until rewritten. The checksum detects payload corruption but does not authenticate deliberate edits to both fields.
+Continued [PR #19](https://github.com/Jmiller47904/Duality/pull/19), adding CPU-only PyTorch installation to its smoke workflow after the prior CUDA dependency install exhausted runner disk space. Active-state checksums and legacy-row compatibility remain the focused code change.
 
-**Checks completed:** `python -m compileall -q src tests` and `git diff --check` passed. Focused pytest could not start: pytest and PyTorch are unavailable locally. Main CI passed; PR #19 CI is queued, so required checks are still pending.
+**Checks completed:** `python -m compileall -q src tests`, `git diff --check`, and YAML parsing passed. Local pytest could not start because pytest is unavailable. The updated V1 smoke test passed. PR CI is still in progress.
 
-No other open PRs were found. PR #19 is open and unmerged. No release was published.
+PR #19 remains open and unmerged while CI finishes; GitHub reports it mergeable. No other open PRs/issues were found. No release was published.
