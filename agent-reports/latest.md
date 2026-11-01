@@ -1,1 +1,1 @@
-Discord delivery diagnostic retry initiated after webhook refresh. This is a setup test; scheduled agent summaries will follow after delivery succeeds.
+Retrying Discord delivery after workflow diagnostic correction.
