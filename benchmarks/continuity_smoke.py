@@ -34,9 +34,9 @@ def run_evaluation(work_dir: Path) -> Dict[str, Any]:
     """Run repeatable replay, provenance, contradiction, and isolation checks."""
 
     torch.manual_seed(SEED)
-    layer = DualityMemory(d_model=8, slots=4).eval()
-    prefix = torch.linspace(-1.0, 1.0, steps=24).reshape(1, 3, 8)
-    continuation = torch.linspace(0.75, -0.75, steps=16).reshape(1, 2, 8)
+    layer = DualityMemory(d_model=8, slots=4).cpu().eval()
+    prefix = torch.linspace(-1.0, 1.0, steps=24, device="cpu").reshape(1, 3, 8)
+    continuation = torch.linspace(0.75, -0.75, steps=16, device="cpu").reshape(1, 2, 8)
     with torch.inference_mode():
         _, initial_state = layer(prefix)
         expected_output, _ = layer(continuation, initial_state)
@@ -145,3 +145,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
