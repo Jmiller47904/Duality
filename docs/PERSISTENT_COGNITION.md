@@ -90,7 +90,9 @@ active model state, and self-model in one SQLite transaction, returning a row co
 store. It leaves named snapshots intact by default so experiment evidence is not
 silently destroyed. Pass `include_snapshots=True` only when those checkpoints must
 also be deleted. Other identities are never affected. This is a reset of stored
-functional state, not a claim about identity or consciousness.
+functional state, not a claim about identity or consciousness. All selected deletes
+share one SQLite transaction: if any delete fails, earlier deletes in that reset
+are rolled back as well.
 
 ### Sourced claims and contradiction candidates
 
