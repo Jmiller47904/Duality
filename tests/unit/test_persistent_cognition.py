@@ -313,6 +313,53 @@ def test_named_snapshot_replays_memory_and_preserves_checkpoint(tmp_path):
             store.load_snapshot("other", "before")
 
 
+def test_active_model_state_detects_payload_corruption(tmp_path):
+    with PersistentMemoryStore(tmp_path / "active-state.sqlite3") as store:
+        store.save_model_state("a", (None,))
+        checksum = store.connection.execute(
+            "SELECT payload_sha256 FROM model_state WHERE identity = ?", ("a",)
+        ).fetchone()[0]
+        assert len(checksum) == 64
+
+        store.connection.execute(
+            "UPDATE model_state SET payload = ? WHERE identity = ?",
+            ('{"version":1,"layers":[null,null]}', "a"),
+        )
+        store.connection.commit()
+
+        with pytest.raises(ValueError, match="model state checksum"):
+            store.load_model_state("a")
+
+
+def test_legacy_active_model_state_remains_readable_after_migration(tmp_path):
+    import sqlite3
+
+    database = tmp_path / "legacy-active-state.sqlite3"
+    payload = json.dumps(
+        {"version": 1, "layers": [None]}, sort_keys=True, separators=(",", ":")
+    )
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE TABLE model_state ("
+            "identity TEXT PRIMARY KEY, payload TEXT NOT NULL, updated_at REAL NOT NULL)"
+        )
+        connection.execute(
+            "INSERT INTO model_state VALUES (?, ?, ?)", ("legacy", payload, 1.0)
+        )
+
+    with PersistentMemoryStore(database) as store:
+        row = store.connection.execute(
+            "SELECT payload_sha256 FROM model_state WHERE identity = ?", ("legacy",)
+        ).fetchone()
+        assert row["payload_sha256"] is None
+        assert store.load_model_state("legacy") == (None,)
+
+        store.save_model_state("legacy", (None,))
+        assert store.connection.execute(
+            "SELECT payload_sha256 FROM model_state WHERE identity = ?", ("legacy",)
+        ).fetchone()["payload_sha256"]
+
+
 def test_snapshot_is_immutable_and_detects_corruption(tmp_path):
     import sqlite3
 
