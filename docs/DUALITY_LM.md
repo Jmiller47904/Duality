@@ -19,6 +19,12 @@ returns the next state, and a later call can pass it back alongside the
 attention KV cache. This supports both teacher-forced training and
 prompt-prefill plus token-by-token generation.
 
+For inference that keeps state inside one model instance, pass
+`persistent_memory=True`. `return_memory_state=False` hides the state from the
+call result while still retaining it for the next persistent call. Use
+`reset_memory()` to clear that retained state. These options control output
+visibility and in-process persistence independently.
+
 The state update is detached from autograd. That gives the model a recurrent
 working-memory signal without retaining an unbounded computation graph across
 an entire conversation. The query and read projections, along with the
