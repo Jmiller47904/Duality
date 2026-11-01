@@ -71,6 +71,7 @@ def run_benchmark(
         raise ValueError("warmup must be >= 0 and iterations must be > 0")
 
     previous_threads = torch.get_num_threads()
+    previous_rng_state = torch.random.get_rng_state()
     torch.set_num_threads(1)
     try:
         torch.manual_seed(seed)
@@ -134,6 +135,7 @@ def run_benchmark(
             ),
         }
     finally:
+        torch.random.set_rng_state(previous_rng_state)
         torch.set_num_threads(previous_threads)
 
 
