@@ -1,0 +1,1 @@
+Discord reporting is configured for the Duality Build Agent. The next hourly run will publish its full review summary here.
