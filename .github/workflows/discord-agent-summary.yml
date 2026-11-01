@@ -26,6 +26,7 @@ jobs:
           import json
           import os
           import urllib.request
+          from urllib.error import HTTPError
 
           webhook = os.environ.get("DISCORD_WEBHOOK_URL")
           if not webhook:
@@ -46,7 +47,18 @@ jobs:
               headers={"Content-Type": "application/json"},
               method="POST",
           )
-          with urllib.request.urlopen(request, timeout=20) as response:
-              if response.status not in (200, 204):
-                  raise SystemExit(f"Discord returned unexpected status {response.status}")
+          try:
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  if response.status not in (200, 204):
+                      raise SystemExit(f"Discord returned unexpected status {response.status}")
+          except HTTPError as error:
+              try:
+                  details = json.loads(error.read().decode("utf-8"))
+              except (UnicodeDecodeError, json.JSONDecodeError):
+                  details = {}
+              print(
+                  f"Discord rejected the webhook request: HTTP {error.code}; "
+                  f"Discord code={details.get('code')}; message={details.get('message')}"
+              )
+              raise SystemExit(1)
           PY
