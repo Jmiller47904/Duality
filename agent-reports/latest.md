@@ -1,1 +1,1 @@
-Fresh delivery check started after the webhook setup was saved.
+Webhook saved in Discord. Running a fresh delivery test.
