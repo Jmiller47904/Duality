@@ -103,6 +103,20 @@ def _validate_identity(identity: str) -> str:
     return identity
 
 
+def _snapshot_provenance_checksum(serialized_provenance: str) -> str:
+    return hashlib.sha256(serialized_provenance.encode("utf-8")).hexdigest()
+
+
+def _verify_snapshot_provenance(
+    serialized_provenance: str, expected_checksum: Optional[str]
+) -> str:
+    if expected_checksum is None:
+        return "legacy_unverified"
+    if _snapshot_provenance_checksum(serialized_provenance) != expected_checksum:
+        raise ValueError("snapshot provenance checksum mismatch")
+    return "verified"
+
+
 def _validate_decay_rate(value: float) -> float:
     value = float(value)
     if not math.isfinite(value) or value < 0.0:
@@ -184,6 +198,7 @@ class PersistentMemoryStore:
                 sha256 TEXT NOT NULL,
                 provenance TEXT NOT NULL,
                 created_at REAL NOT NULL,
+                provenance_sha256 TEXT,
                 PRIMARY KEY (identity, label)
             );
             CREATE TABLE IF NOT EXISTS model_state (
@@ -215,6 +230,13 @@ class PersistentMemoryStore:
             CREATE INDEX IF NOT EXISTS idx_memory_identity_kind
             ON memory(identity, kind);
             """)
+        snapshot_columns = {
+            row["name"] for row in self.connection.execute("PRAGMA table_info(model_snapshot)")
+        }
+        if "provenance_sha256" not in snapshot_columns:
+            self.connection.execute(
+                "ALTER TABLE model_snapshot ADD COLUMN provenance_sha256 TEXT"
+            )
         self.connection.commit()
 
     def remember(self, identity: str, record: MemoryRecord) -> str:
@@ -578,16 +600,21 @@ class PersistentMemoryStore:
             raise ValueError("provenance must map strings to strings")
         payload = self._encode_state(state)
         digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        serialized_provenance = json.dumps(metadata, sort_keys=True, separators=(",", ":"))
+        provenance_digest = _snapshot_provenance_checksum(serialized_provenance)
         with self.connection:
             self.connection.execute(
-                "INSERT INTO model_snapshot VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO model_snapshot "
+                "(identity, label, payload, sha256, provenance, created_at, provenance_sha256) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (
                     identity,
                     label,
                     payload,
                     digest,
-                    json.dumps(metadata, sort_keys=True),
+                    serialized_provenance,
                     time.time(),
+                    provenance_digest,
                 ),
             )
         return digest
@@ -596,11 +623,26 @@ class PersistentMemoryStore:
         """List checkpoint metadata without loading tensors or changing state."""
         _validate_identity(identity)
         rows = self.connection.execute(
-            "SELECT label, sha256, provenance, created_at FROM model_snapshot "
+            "SELECT label, sha256, provenance, provenance_sha256, created_at "
+            "FROM model_snapshot "
             "WHERE identity = ? ORDER BY created_at, label",
             (identity,),
         ).fetchall()
-        return [{**dict(row), "provenance": json.loads(row["provenance"])} for row in rows]
+        snapshots = []
+        for row in rows:
+            integrity = _verify_snapshot_provenance(
+                row["provenance"], row["provenance_sha256"]
+            )
+            snapshots.append(
+                {
+                    "label": row["label"],
+                    "sha256": row["sha256"],
+                    "provenance": json.loads(row["provenance"]),
+                    "created_at": row["created_at"],
+                    "provenance_integrity": integrity,
+                }
+            )
+        return snapshots
 
     def load_snapshot(self, identity: str, label: str, device=None) -> ModelMemoryState:
         """Read an independent state after checking payload integrity.
@@ -610,11 +652,13 @@ class PersistentMemoryStore:
         """
         _validate_identity(identity)
         row = self.connection.execute(
-            "SELECT payload, sha256 FROM model_snapshot WHERE identity = ? AND label = ?",
+            "SELECT payload, sha256, provenance, provenance_sha256 FROM model_snapshot "
+            "WHERE identity = ? AND label = ?",
             (identity, label),
         ).fetchone()
         if row is None:
             raise KeyError("snapshot not found for this identity and label")
+        _verify_snapshot_provenance(row["provenance"], row["provenance_sha256"])
         actual = hashlib.sha256(row["payload"].encode("utf-8")).hexdigest()
         if actual != row["sha256"]:
             raise ValueError("snapshot checksum mismatch")

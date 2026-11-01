@@ -332,6 +332,60 @@ def test_snapshot_is_immutable_and_detects_corruption(tmp_path):
             store.save_snapshot("a", "bad-metadata", (), {"seed": 1})
 
 
+def test_snapshot_detects_provenance_tampering(tmp_path):
+    with PersistentMemoryStore(tmp_path / "snapshot-provenance.sqlite3") as store:
+        store.save_snapshot("a", "v1", (None,), {"checkpoint": "weights-1"})
+        assert store.list_snapshots("a")[0]["provenance_integrity"] == "verified"
+
+        store.connection.execute(
+            "UPDATE model_snapshot SET provenance = ? WHERE identity = ? AND label = ?",
+            ('{"checkpoint":"weights-2"}', "a", "v1"),
+        )
+        store.connection.commit()
+
+        with pytest.raises(ValueError, match="provenance checksum"):
+            store.list_snapshots("a")
+        with pytest.raises(ValueError, match="provenance checksum"):
+            store.load_snapshot("a", "v1")
+
+
+def test_legacy_snapshot_migration_marks_provenance_unverified(tmp_path):
+    import hashlib
+    import sqlite3
+
+    database = tmp_path / "legacy-snapshot.sqlite3"
+    payload = json.dumps(
+        {"version": 1, "layers": [None]}, sort_keys=True, separators=(",", ":")
+    )
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE TABLE model_snapshot ("
+            "identity TEXT NOT NULL, label TEXT NOT NULL, payload TEXT NOT NULL, "
+            "sha256 TEXT NOT NULL, provenance TEXT NOT NULL, created_at REAL NOT NULL, "
+            "PRIMARY KEY (identity, label))"
+        )
+        connection.execute(
+            "INSERT INTO model_snapshot VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                "legacy",
+                "before-migration",
+                payload,
+                hashlib.sha256(payload.encode("utf-8")).hexdigest(),
+                '{"seed":"legacy"}',
+                1.0,
+            ),
+        )
+
+    with PersistentMemoryStore(database) as store:
+        legacy = store.list_snapshots("legacy")[0]
+        assert legacy["provenance"] == {"seed": "legacy"}
+        assert legacy["provenance_integrity"] == "legacy_unverified"
+        assert store.load_snapshot("legacy", "before-migration") == (None,)
+
+        store.save_snapshot("legacy", "after-migration", (None,), {"seed": "new"})
+        assert store.list_snapshots("legacy")[1]["provenance_integrity"] == "verified"
+
+
 def test_identity_reset_is_scoped_and_preserves_snapshots_by_default(tmp_path):
     with PersistentMemoryStore(tmp_path / "reset.sqlite3") as store:
         for identity in ("a", "b"):
