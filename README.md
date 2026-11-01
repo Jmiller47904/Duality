@@ -105,6 +105,13 @@ architecture, evidence ladder, and evaluation plan. These mechanisms implement
 functional continuity and self-monitoring; they do not prove subjective
 consciousness.
 
+Run `python benchmarks/continuity_smoke.py` for a small CPU-only, JSON-producing
+check of snapshot replay after reopening SQLite, provenance verification,
+contradiction candidates, and identity-scoped reset/isolation. It uses an
+untrained tiny memory layer and synthetic fixtures; it measures persistence
+invariants, not model quality or evidence of consciousness. Run its regression
+check with `pytest tests/unit/test_continuity_smoke.py`.
+
 ---
 
 ## What You Get

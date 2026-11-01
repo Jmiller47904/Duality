@@ -199,6 +199,20 @@ agency, not settle subjective consciousness.
 7. **Shutdown and scope:** verify that cycles stop at configured bounds and
    cannot acquire undeclared permissions.
 
+### Reproducible persistence smoke evaluation
+
+Run `python benchmarks/continuity_smoke.py` to emit a small JSON result for
+snapshot replay after closing and reopening SQLite, provenance checksum status,
+contradiction-candidate count, and identity-scoped reset row counts and
+isolation. The fixture is seeded, uses an untrained tiny CPU memory layer, and
+does not download weights or datasets. The focused regression check is
+`pytest tests/unit/test_continuity_smoke.py`.
+
+This is a persistence and reset regression evaluation only. It does not measure
+recall quality, task performance, model continuity quality, or subjective
+experience. Its deterministic values describe this fixed synthetic fixture;
+they are not evidence of general model improvement.
+
 
 ## Named memory snapshots
 
