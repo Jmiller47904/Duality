@@ -275,15 +275,22 @@ class DRAIV1ResonanceLayer(nn.Module):
     def get_stats(self):
         S = self.attractor_strengths
         alive = S > self.strength_min
+        total_strength = float(S.sum())
+        timestep = float(self.timestep.item())
+        burn_in_active = (
+            total_strength < self.burn_in_threshold
+            if self.burn_in_mode == "strength"
+            else timestep < self.burn_in_tokens
+        )
 
-        total = float(S.sum())
         num_alive = int(alive.sum())
         mean = float((S * alive).sum() / (alive.sum() + 1e-8))
 
         return {
             "num_alive": num_alive,
-            "total_strength": total,
+            "total_strength": total_strength,
             "mean_strength": mean,
             "max_strength": float(S.max()),
-            "timestep": float(self.timestep.item()),
+            "timestep": timestep,
+            "burn_in_active": bool(burn_in_active),
         }
