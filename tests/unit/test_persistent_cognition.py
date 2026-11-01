@@ -476,6 +476,7 @@ def test_identity_reset_is_scoped_and_preserves_snapshots_by_default(tmp_path):
 
         assert deleted == {
             "memory": 1,
+            "memory_claim": 0,
             "model_state": 1,
             "self_model": 1,
             "model_snapshot": 0,
@@ -496,6 +497,7 @@ def test_identity_reset_is_scoped_and_preserves_snapshots_by_default(tmp_path):
         snapshot_deleted = store.reset_identity("a", include_snapshots=True)
         assert snapshot_deleted == {
             "memory": 0,
+            "memory_claim": 0,
             "model_state": 0,
             "self_model": 0,
             "model_snapshot": 1,

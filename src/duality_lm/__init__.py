@@ -15,12 +15,21 @@ from .cognition import (
 )
 from .memory import DualityMemory, MemoryState
 from .model import DualityLM, DualityLMOutput
-from .persistence import MemoryKind, MemoryRecord, PersistentMemoryStore, SelfModel
+from .persistence import (
+    ClaimRecord,
+    ContradictionCandidate,
+    MemoryKind,
+    MemoryRecord,
+    PersistentMemoryStore,
+    SelfModel,
+)
 from .tokenizer import ByteTokenizer
 
 __all__ = [
     "ByteTokenizer",
+    "ClaimRecord",
     "ContinuityEngine",
+    "ContradictionCandidate",
     "DualityLM",
     "DualityLMConfig",
     "DualityLMOutput",
