@@ -691,12 +691,16 @@ class PersistentMemoryStore:
 
     def save_self_model(self, model: SelfModel) -> None:
         _validate_identity(model.identity)
-        model.updated_at = time.time()
-        self.connection.execute(
-            "INSERT OR REPLACE INTO self_model VALUES (?, ?, ?)",
-            (model.identity, json.dumps(asdict(model), sort_keys=True), model.updated_at),
-        )
-        self.connection.commit()
+        timestamp = time.time()
+        payload = asdict(model)
+        payload["updated_at"] = timestamp
+        serialized = json.dumps(payload, sort_keys=True, allow_nan=False)
+        with self.connection:
+            self.connection.execute(
+                "INSERT OR REPLACE INTO self_model VALUES (?, ?, ?)",
+                (model.identity, serialized, timestamp),
+            )
+        model.updated_at = timestamp
 
     def load_self_model(self, identity: str) -> SelfModel:
         _validate_identity(identity)
