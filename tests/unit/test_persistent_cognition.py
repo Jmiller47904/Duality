@@ -2,6 +2,7 @@
 
 import json
 import math
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,7 @@ import torch
 
 from duality_lm import (
     ByteTokenizer,
+    ClaimRecord,
     ContinuityEngine,
     DualityLM,
     DualityLMConfig,
@@ -506,6 +508,62 @@ def test_identity_reset_is_scoped_and_preserves_snapshots_by_default(tmp_path):
 
         with pytest.raises(ValueError, match="identity cannot be empty"):
             store.reset_identity("  ")
+
+
+def test_identity_reset_rolls_back_all_deletions_when_a_later_delete_fails(tmp_path):
+    with PersistentMemoryStore(tmp_path / "reset-rollback.sqlite3") as store:
+        for identity in ("a", "b"):
+            store.remember(
+                identity,
+                MemoryRecord(
+                    content=f"memory for {identity}",
+                    vector=[1.0, 0.0],
+                    resonance_vector=[1.0, 0.0],
+                ),
+            )
+            store.record_claim(
+                identity,
+                ClaimRecord(
+                    subject="account",
+                    predicate="status",
+                    value="active",
+                    provenance={"source": "fixture"},
+                ),
+            )
+            store.save_model_state(identity, (None,))
+            store.save_self_model(SelfModel(identity=identity, goals=["persist"]))
+            store.save_snapshot(identity, "baseline", (None,), {"identity": identity})
+
+        # Fail after reset_identity has already deleted memory, claims, active
+        # state, and self-model rows. SQLite must roll back the whole reset.
+        store.connection.execute(
+            """
+            CREATE TRIGGER abort_snapshot_delete
+            BEFORE DELETE ON model_snapshot
+            WHEN OLD.identity = 'a'
+            BEGIN
+                SELECT RAISE(ABORT, 'forced snapshot delete failure');
+            END
+            """
+        )
+        store.connection.commit()
+
+        with pytest.raises(sqlite3.IntegrityError, match="forced snapshot delete failure"):
+            store.reset_identity("a", include_snapshots=True)
+
+        for identity in ("a", "b"):
+            assert [record.content for record in store.recall(identity, [1.0, 0.0])] == [
+                f"memory for {identity}"
+            ]
+            claims = store.list_claims(identity)
+            assert [(claim.subject, claim.predicate, claim.value) for claim in claims] == [
+                ("account", "status", "active")
+            ]
+            assert store.load_model_state(identity) == (None,)
+            assert store.load_self_model(identity).goals == ["persist"]
+            assert [snapshot["label"] for snapshot in store.list_snapshots(identity)] == [
+                "baseline"
+            ]
 
 
 @pytest.mark.parametrize("identity", ["", "  ", None])

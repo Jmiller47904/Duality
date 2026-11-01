@@ -91,6 +91,8 @@ and execute one bounded reflection cycle at a time. A
 reflection's self-memory, updated self-model, and optional attractor checkpoint
 are committed together; a database write failure rolls those outputs back. Recall
 activation counts remain a separate record of which memories were selected.
+Identity resets likewise delete selected records in one SQLite transaction; if a
+delete fails, earlier deletes in that reset roll back together.
 
 ```python
 from duality_lm import ContinuityEngine, PersistentMemoryStore
