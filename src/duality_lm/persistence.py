@@ -346,6 +346,9 @@ class PersistentMemoryStore:
         ):
             raise ValueError("claim provenance must be a nonempty string mapping")
         confidence = _validate_unit_interval("confidence", claim.confidence)
+        created_at = float(claim.created_at)
+        if not math.isfinite(created_at):
+            raise ValueError("claim created_at must be finite")
         try:
             value_json = json.dumps(
                 claim.value, sort_keys=True, separators=(",", ":"), allow_nan=False
@@ -373,7 +376,7 @@ class PersistentMemoryStore:
                     value_json,
                     provenance_json,
                     confidence,
-                    float(claim.created_at),
+                    created_at,
                 ),
             )
         return claim.id
