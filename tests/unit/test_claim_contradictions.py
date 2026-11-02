@@ -72,6 +72,18 @@ def test_claim_validation_is_strict_and_ids_are_identity_bound(tmp_path: Path) -
                 "experiment-a",
                 ClaimRecord(subject="model", predicate="score", value=0.6, provenance={}),
             )
+        for created_at in (math.nan, math.inf, -math.inf):
+            with pytest.raises(ValueError, match="created_at must be finite"):
+                store.record_claim(
+                    "experiment-a",
+                    ClaimRecord(
+                        subject="model",
+                        predicate="score",
+                        value=0.7,
+                        provenance={"run": "invalid-time"},
+                        created_at=created_at,
+                    ),
+                )
 
 
 def test_identity_reset_removes_claims_without_cross_identity_effects(tmp_path: Path) -> None:
