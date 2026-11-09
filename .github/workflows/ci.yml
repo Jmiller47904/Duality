@@ -23,7 +23,9 @@ concurrency:
 jobs:
   package-contract:
     name: Python ${{ matrix.python-version }} package contract
-    runs-on: ubuntu-latest
+    # Python 3.9 is part of the declared package contract but is not available
+    # from setup-python on the current Ubuntu 26.04 latest image.
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
