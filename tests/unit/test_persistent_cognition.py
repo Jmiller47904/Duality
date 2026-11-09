@@ -164,6 +164,59 @@ def test_reflection_cycle_rejects_invalid_decay_rate_before_writing(
             assert count == 0
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("created_at", float("nan"), "created_at must be finite"),
+        ("created_at", float("inf"), "created_at must be finite"),
+        ("last_activated", float("-inf"), "last_activated must be finite"),
+        ("activation_count", -1, "activation_count must be a nonnegative integer"),
+        ("activation_count", 1.5, "activation_count must be a nonnegative integer"),
+        ("activation_count", True, "activation_count must be a nonnegative integer"),
+    ],
+)
+def test_remember_rejects_invalid_persistence_metadata_before_writing(
+    tmp_path: Path, field: str, value: object, message: str
+) -> None:
+    record = MemoryRecord(
+        content="invalid persistence metadata",
+        vector=[1.0, 0.0],
+        resonance_vector=[1.0, 0.0],
+    )
+    setattr(record, field, value)
+    with PersistentMemoryStore(tmp_path / "invalid-metadata.sqlite3") as store:
+        with pytest.raises(ValueError, match=message):
+            store.remember("identity", record)
+        assert store.recall("identity", [1.0, 0.0]) == []
+
+
+def test_reflection_and_recall_reject_nonfinite_timestamps_without_mutation(
+    tmp_path: Path,
+) -> None:
+    record = MemoryRecord(
+        content="valid memory",
+        vector=[1.0, 0.0],
+        resonance_vector=[1.0, 0.0],
+    )
+    with PersistentMemoryStore(tmp_path / "timestamp-integrity.sqlite3") as store:
+        store.remember("identity", record)
+        invalid = MemoryRecord(
+            content="invalid reflection",
+            vector=[1.0, 0.0],
+            resonance_vector=[1.0, 0.0],
+            last_activated=float("nan"),
+        )
+        with pytest.raises(ValueError, match="last_activated must be finite"):
+            store.save_reflection_cycle(
+                "identity", invalid, SelfModel(identity="identity")
+            )
+        with pytest.raises(ValueError, match="recall timestamp must be finite"):
+            store.recall("identity", [1.0, 0.0], now=float("inf"))
+
+        unchanged = store.recall("identity", [1.0, 0.0], now=record.last_activated)
+        assert unchanged[0].activation_count == 1
+
+
 def test_memory_id_cannot_move_between_identities(tmp_path: Path) -> None:
     memory_id = "shared-record-id"
     original = MemoryRecord(

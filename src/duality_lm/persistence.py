@@ -154,6 +154,25 @@ def _validate_decay_rate(value: float) -> float:
     return value
 
 
+def _validate_timestamp(name: str, value: float) -> float:
+    value = float(value)
+    if not math.isfinite(value):
+        raise ValueError(f"{name} must be finite")
+    return value
+
+
+def _validate_activation_count(value: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError("activation_count must be a nonnegative integer")
+    return value
+
+
+def _validate_memory_metadata(record: MemoryRecord) -> None:
+    record.created_at = _validate_timestamp("created_at", record.created_at)
+    record.last_activated = _validate_timestamp("last_activated", record.last_activated)
+    record.activation_count = _validate_activation_count(record.activation_count)
+
+
 def _cosine(left: Sequence[float], right: Sequence[float]) -> float:
     if len(left) != len(right):
         raise ValueError("memory and query vectors must have the same dimension")
@@ -298,6 +317,7 @@ class PersistentMemoryStore:
         record.novelty = _validate_unit_interval("novelty", record.novelty)
         record.salience = _validate_unit_interval("salience", record.salience)
         record.decay_rate = _validate_decay_rate(record.decay_rate)
+        _validate_memory_metadata(record)
 
         with self.connection:
             owner = self.connection.execute(
@@ -346,6 +366,9 @@ class PersistentMemoryStore:
         ):
             raise ValueError("claim provenance must be a nonempty string mapping")
         confidence = _validate_unit_interval("confidence", claim.confidence)
+        created_at = float(claim.created_at)
+        if not math.isfinite(created_at):
+            raise ValueError("claim created_at must be finite")
         try:
             value_json = json.dumps(
                 claim.value, sort_keys=True, separators=(",", ":"), allow_nan=False
@@ -373,7 +396,7 @@ class PersistentMemoryStore:
                     value_json,
                     provenance_json,
                     confidence,
-                    float(claim.created_at),
+                    created_at,
                 ),
             )
         return claim.id
@@ -473,6 +496,7 @@ class PersistentMemoryStore:
         record.novelty = _validate_unit_interval("novelty", record.novelty)
         record.salience = _validate_unit_interval("salience", record.salience)
         record.decay_rate = _validate_decay_rate(record.decay_rate)
+        _validate_memory_metadata(record)
         memory_values = (
             record.id,
             identity,
@@ -554,7 +578,7 @@ class PersistentMemoryStore:
             parameters.extend(kind_values)
 
         rows = self.connection.execute(sql, parameters).fetchall()
-        timestamp = time.time() if now is None else float(now)
+        timestamp = _validate_timestamp("recall timestamp", time.time() if now is None else now)
         association_set = set(association_ids)
         ranked: List[MemoryRecord] = []
         for row in rows:
