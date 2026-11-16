@@ -32,7 +32,7 @@ from .config import (
 )
 
 # High-level application API
-from .apply_v1 import apply_v1, get_v1_stats
+from .apply_v1 import apply_v1, get_v1_stats, reset_v1_state, get_v1_state_size_bytes
 
 __version__ = "1.1.0"
 __author__ = "Halcyon AI Research"
@@ -41,6 +41,8 @@ __all__ = [
     # High-level API
     "apply_v1",
     "get_v1_stats",
+    "reset_v1_state",
+    "get_v1_state_size_bytes",
 
     # Configuration system
     "V1Config",

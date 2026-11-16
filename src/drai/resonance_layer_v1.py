@@ -272,6 +272,28 @@ class DRAIV1ResonanceLayer(nn.Module):
     # ======================================================================
     # Stats
     # ======================================================================
+    @torch.no_grad()
+    def reset_state(self) -> None:
+        """Clear recurrent attractor state before an unrelated conversation."""
+
+        self.attractor_vectors.zero_()
+        self.attractor_strengths.zero_()
+        self.attractor_last_used.zero_()
+        self.timestep.zero_()
+
+    def state_size_bytes(self) -> int:
+        """Return the bytes allocated by persistent attractor state buffers."""
+
+        return sum(
+            tensor.numel() * tensor.element_size()
+            for tensor in (
+                self.attractor_vectors,
+                self.attractor_strengths,
+                self.attractor_last_used,
+                self.timestep,
+            )
+        )
+
     def get_stats(self):
         S = self.attractor_strengths
         alive = S > self.strength_min

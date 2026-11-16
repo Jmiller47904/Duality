@@ -19,6 +19,8 @@ from transformers import (
     AutoModelForCausalLM,
 )
 
+from .resonance_layer_v1 import DRAIV1ResonanceLayer
+
 from .config import (
     V1Config,
     get_v1_conservative,
@@ -143,6 +145,37 @@ def apply_v1(
     _mark_injected(model)
 
     return model
+
+
+# ============================================================================
+# Public API: memory-state lifecycle
+# ============================================================================
+
+def reset_v1_state(model: PreTrainedModel) -> int:
+    """Reset all DRAI V1 attractor buffers on a model.
+
+    Returns the number of DRAI V1 layers reset. Models without DRAI V1 layers
+    return zero, which makes this safe to call from shared evaluation code.
+    """
+
+    layers = [
+        module
+        for module in model.modules()
+        if isinstance(module, DRAIV1ResonanceLayer)
+    ]
+    for layer in layers:
+        layer.reset_state()
+    return len(layers)
+
+
+def get_v1_state_size_bytes(model: PreTrainedModel) -> int:
+    """Return allocated recurrent-state bytes across DRAI V1 layers."""
+
+    return sum(
+        module.state_size_bytes()
+        for module in model.modules()
+        if isinstance(module, DRAIV1ResonanceLayer)
+    )
 
 
 # ============================================================================

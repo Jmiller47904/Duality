@@ -1,115 +1,42 @@
 # Story Comprehension Benchmark - Pythia-410M
 
-This exploratory benchmark measures exact-match answers on one small synthetic
-story set. It is not a production-readiness test or a general model-quality claim.
+This exploratory benchmark measures exact-match answers on synthetic stories.
+It remains useful as a simple story-QA check, but it is **not** a memory
+isolation evaluation: each question receives the entire story in its prompt.
 
-## Historical result (pre-determinism fix)
+## Historical result
 
-```
-Baseline (no DRAI):  85.0% accuracy (51/60 correct)
-V1 DRAI:             88.3% accuracy (53/60 correct)
-Delta:               +3.3 percentage points
-```
+The values below came from an earlier stochastic run and are retained only as
+historical observations:
 
-These values are retained as historical observations. The earlier script used
-stochastic sampling without seeding the model-generation RNG; the story generator
-seed alone did not make the scores reproducible. They are not the expected output
-for the current script and should not be used as evidence of a general improvement.
+~~~
+Baseline (no DRAI): 85.0% accuracy (51/60 correct)
+V1 DRAI:            88.3% accuracy (53/60 correct)
+~~~
 
-## What This Tests
+They are not the expected output of the current greedy-decoding script and do
+not establish a general improvement.
 
-- **Task**: Answer factual questions about short stories
-- **Model**: EleutherAI/pythia-410m (~410M parameters)
-- **Dataset**: 20 synthetic stories with 3 questions each (60 total)
-- **Metric**: Exact-match accuracy
+## Current protocol
 
-## Quick Start
+The script generates 20 stories and calculates the question count from the
+generated data; it is not fixed at 60. It uses greedy decoding, compares the
+complete first answer line after case/punctuation normalization, and resets
+DRAI buffers before each independent story while retaining state within a
+story's questions. Results can still vary with the model, tokenizer, library
+versions, and hardware.
 
-```bash
-# Install dependencies
-pip install torch transformers
+The latest completed scheduled run (November 8, 2026) scored 1/157 for both the
+baseline and DRAI arms. The November 15 scheduled run was canceled during the
+benchmark step. This near-zero result is not a usable memory result: the model
+sees the full story for every question, and this task does not test recall after
+history is removed.
 
-# Run benchmark (takes ~5-10 minutes on CPU)
-python run.py
-```
+For the controlled three-condition comparison, see
+[the paired memory evaluation](../memory_evaluation/README.md).
 
-## What Happens
+## Run
 
-1. **Generate test stories** (20 stories, 60 questions)
-2. **Test baseline** (pythia-410m without DRAI)
-3. **Test V1 DRAI** (pythia-410m with DRAI V1)
-4. **Compare results** on this synthetic task; no improvement is assumed
-
-## Expected Output
-
-```
-================================
-FINAL COMPARISON
-================================
-
-Model                          Accuracy        Correct
-----------------------------------------------------------------------
-Baseline (no DRAI)                 current run output
-V1 DRAI (experimental)             current run output
-----------------------------------------------------------------------
-
-Delta: computed from the current run
-
-V1 Attractor Statistics:
-  - Layers with DRAI: 1
-  - Total active attractors: 16
-  - Total strength: 429.89
-  - Burn-in complete: YES
-  - Timesteps processed: 1200
-
-====================================
-VERDICT
-====================================
-Task-specific comparison only; not a generalization result
-```
-
-## Configuration
-
-V1 uses conservative hyperparameters for pythia-410m:
-
-```python
-max_attractors = 16               # Gentle memory capacity
-theta_match = 0.8                 # Conservative (only strong matches)
-alpha_update = 0.05               # Slow, stable updates
-lambda_decay = 0.995              # Slow decay (long memory)
-max_influence_scale = 0.15        # Gentle influence (15% max)
-burn_in_threshold = 50.0          # ~10 tokens typical
-layer_mode = "mid"                # Only layer 12 (middle layer)
-```
-
-## Files
-
-- `run.py` - Main benchmark script
-- `story_generator.py` - Synthetic story generation
-- `README.md` - This file
-
-## Current evaluation protocol
-
-The current script uses greedy decoding (`do_sample=False`), seeds model
-initialization, and uses seed 42 for synthetic story generation. Greedy decoding
-removes token-sampling randomness; results can still vary with library versions
-or hardware. The updated protocol has not been run to refresh the historical
-scores above. V1 statistics include `burn_in_active`, derived from the same
-configured strength or token threshold used by the resonance layer; this keeps
-the final comparison report aligned with the runtime gate.
-
-```bash
-python run.py
-```
-
-Results are saved to `results/comparison.json` when the benchmark is run.
-
-## Why This Matters
-
-This measures one narrow behavioral task. A single score does not establish
-generalization, causality, or production readiness. Repeat the comparison with
-published seeds, model/library versions, and additional held-out tasks before
-making broader performance claims.
-
-**Next**: Add held-out memory and continuity tasks with explicit seeds and report
-per-run results rather than extrapolating from this benchmark.
+~~~bash
+python benchmarks/story_comprehension_410m/run.py
+~~~
