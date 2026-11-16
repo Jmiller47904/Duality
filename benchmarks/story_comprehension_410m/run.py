@@ -22,10 +22,11 @@ from benchmarks.story_comprehension_410m.evaluation import (
     EVALUATION_SEED,
     generate_answer,
     seed_model_initialization,
+    normalize_answer,
 )
 
 # DRAI V1
-from src.drai import apply_v1, get_v1_conservative, get_v1_stats
+from src.drai import apply_v1, get_v1_conservative, get_v1_stats, reset_v1_state
 
 
 def evaluate_model(model, tokenizer, stories, model_name="Model"):
@@ -38,18 +39,19 @@ def evaluate_model(model, tokenizer, stories, model_name="Model"):
     total_questions = 0
 
     for i, story in enumerate(stories, 1):
+        reset_v1_state(model)
         print(f"\n[Story {i}/{len(stories)}]", end=" ")
 
         for q_idx, question in enumerate(story.questions):
             total_questions += 1
 
             # Create prompt
-            prompt = f"{story.text}\n\nQuestion: {question['question']}\nAnswer:"
+            prompt = f"{story.text}\n\nAnswer with one short answer phrase only.\nQuestion: {question['question']}\nAnswer:"
 
             generated = generate_answer(model, tokenizer, prompt)
 
             # Check correctness
-            correct = generated.lower() == question['answer'].lower()
+            correct = normalize_answer(generated) == normalize_answer(question['answer'])
             results.append({
                 "story_idx": i,
                 "question": question['question'],
