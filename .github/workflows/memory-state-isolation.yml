@@ -1,0 +1,41 @@
+name: Memory state isolation tests
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "src/drai/**"
+      - "benchmarks/memory_evaluation/**"
+      - "tests/unit/test_v1_state_reset.py"
+      - "tests/unit/test_memory_evaluation.py"
+      - "tests/unit/test_story_answer_normalization.py"
+      - ".github/workflows/memory-state-isolation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused-tests:
+    name: DRAI state isolation and memory evaluation tests
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install project and test dependencies
+        run: python -m pip install -e ".[dev]"
+
+      - name: Run focused tests
+        run: |
+          python -m pytest \
+            tests/unit/test_memory_evaluation.py \
+            tests/unit/test_v1_state_reset.py \
+            tests/unit/test_story_answer_normalization.py
